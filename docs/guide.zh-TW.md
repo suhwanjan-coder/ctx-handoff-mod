@@ -65,8 +65,8 @@ ctx-handoff 不會寫你專案裡的 `CLAUDE.md`、`AGENTS.md` 或 skill 檔案�
 
 Bash 或 PowerShell 要執行回不去的指令前，會先問你「允許」或「拒絕」。拒絕或關掉詢問框，指令就不執行，並告訴 Claude。你核准的守門先比對。
 
-- 會問的：`rm -r` 與 `rm -rf`、`Remove-Item -Recurse`、`rmdir /s`、`del /s`、`git push --force`、`-f` 與 `--force-with-lease`、`git reset --hard`、`git clean -f`、`git branch -D`、`git checkout -- .`、`git restore .`、`git push --delete`、`git stash drop`、`git filter-branch`、`robocopy /MIR`、`[IO.Directory]::Delete`、`shutil.rmtree`、把 `-Recurse` 的清單接到 `Remove-Item`、由 `psql` 這類 SQL 用戶端執行的 `DROP TABLE`、`DROP DATABASE` 與 `TRUNCATE TABLE`、`npm publish`、`pnpm publish` 和 `format D:`。包在 `bash -c`、`sh -c`、`sudo`、`xargs`、`powershell -Command`、`cmd /c` 和 PowerShell 的 `-EncodedCommand` 裡面的指令也會檢查。
-- 不會問的：`rm file.txt`、`git push`、`grep -rf`、`git clean -n`、`git restore --staged .`、`npm publish --dry-run`、`Remove-Item -WhatIf`，以及沒有 SQL 用戶端執行的 SQL 文字，例如 `grep` 的搜尋字串。當成文字出現的指令，例如 `echo "rm -rf /"`，會問一次：引號裡的字也會掃，藏在引號裡的指令才不會漏掉。
+- 會問的：`rm -r` 與 `rm -rf`、`Remove-Item -Recurse`、`rmdir /s`、`del /s`、`git push --force`、`-f` 與 `--force-with-lease`、`git reset --hard`、`git clean -f`、`git branch -D`、`git checkout -- .`、`git restore .`、`git push --delete`、`git stash drop`、`git filter-branch`、`robocopy /MIR`、`[IO.Directory]::Delete`、`shutil.rmtree`、把 `-Recurse` 的清單接到 `Remove-Item`（即使只寫了一個檔名也會問）、由 `psql` 這類 SQL 用戶端執行的 `DROP TABLE`、`DROP DATABASE` 與 `TRUNCATE TABLE`、`npm publish`、`pnpm publish` 和 `format D:`。包在 `bash -c`、`sh -c`、`sudo`、`xargs`、`powershell -Command`、`cmd /c` 和 PowerShell 的 `-EncodedCommand` 裡面的指令也會檢查。
+- 不會問的：`rm file.txt`、`git push`、`grep -rf`、`git clean -n`、`git restore --staged .`、`npm publish --dry-run`、`Remove-Item -WhatIf`（`-WhatIf:$false` 不算）、`robocopy /L`，以及沒有 SQL 用戶端執行的 SQL 文字，例如 `grep` 的搜尋字串。當成文字出現的指令，例如 `echo "rm -rf /"`，會問一次：引號裡的字也會掃，藏在引號裡的指令才不會漏掉。
 
 沒有畫面可以問時（`claude -p`、SDK，或沒有接上任何畫面），指令照常執行，只留一行紀錄，排程工作才不會卡住。有畫面但沒人回答時，詢問 120 秒後逾時，指令被拒絕，並告訴 Claude 改用可復原的做法或之後再請使用者確認；排程或 `/loop` 觸發的回合不問，直接拒絕。Monitor 和 MCP 工具執行的指令不在檢查範圍。設定：`command_guard`。
 

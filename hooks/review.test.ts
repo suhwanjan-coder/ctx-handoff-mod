@@ -350,3 +350,69 @@ test('review-10：已知的系統標籤不算，其他用 < 開頭的使用者�
   // 方括號開頭但不是整則一行的，是使用者的話
   expect(digestOf(parseTail(user('2026-10-09T10:00:00.000Z', '[重要] 先修登入頁'), false)).task).toBe('[重要] 先修登入頁')
 })
+
+
+// ---------- review2-A：資料遺失——假標記行不能讓更新吞掉使用者的文字 ----------
+
+const OPEN1 = `${OPEN_PREFIX}1 -->`
+
+test('review2-A：縮排 4 個空格或 tab（清單項目裡的程式碼區塊）的標記行不是卡片，更新不吞掉前面的文字', () => {
+  for (const indent of ['    ', '\t', '      ']) {
+    const fake = `- 範例：\n\n${indent}${OPEN1}\n${indent}我的手寫文字\n${indent}${CARD_CLOSE}\n`
+    const real = renderCard(FIELDS, { ...META, rev: 4 })
+    const file = `# T\n\n${fake}\n${real}\n\n尾\n`
+    const found = findCard(file)
+    if (!found || found === 'broken') throw new Error('real card not found')
+    expect(found.rev).toBe(4)
+    expect(file.slice(0, found.start)).toBe(`# T\n\n${fake}\n`)
+    const out = applyCard(file, renderCard({ ...FIELDS, next: '換掉' }, { ...META, rev: 5 }))
+    if (!('text' in out)) throw new Error('broken')
+    expect(out.text.startsWith(`# T\n\n${fake}\n`)).toBe(true)
+    expect(count(out.text, '我的手寫文字')).toBe(1)
+    expect(out.text.endsWith('\n\n尾\n')).toBe(true)
+  }
+  // 只有縮排的假標記、沒有真的卡片：不是卡片，新卡片放 H1 後面，假的逐位元不動
+  const only = `# T\n\n    ${OPEN1}\n    手寫\n    ${CARD_CLOSE}\n`
+  expect(findCard(only)).toBeUndefined()
+  const ins = applyCard(only, renderCard(FIELDS, META))
+  expect('text' in ins && ins.text.endsWith(`\n\n    ${OPEN1}\n    手寫\n    ${CARD_CLOSE}\n`)).toBe(true)
+})
+
+test('review2-A：包在多行 HTML 註解裡的標記行不是卡片（註解開頭在前一行）', () => {
+  const real = renderCard(FIELDS, { ...META, rev: 7 })
+  for (const wrapped of [
+    `<!--\n${OPEN1}\n-->`,
+    `<!--\n${OPEN1}\n老文字\n${CARD_CLOSE}\n-->`,
+    `<!-- 筆記\n${OPEN1}\n${CARD_CLOSE}\n-->`,
+  ]) {
+    const file = `# T\n\n${wrapped}\n\n${real}\n\n尾\n`
+    const found = findCard(file)
+    if (!found || found === 'broken') throw new Error(`real card not found: ${wrapped}`)
+    expect(found.rev).toBe(7)
+    expect(file.slice(0, found.start)).toBe(`# T\n\n${wrapped}\n\n`)
+    const out = applyCard(file, renderCard({ ...FIELDS, next: '換掉' }, { ...META, rev: 8 }))
+    if (!('text' in out)) throw new Error('broken')
+    expect(out.text.startsWith(`# T\n\n${wrapped}\n\n`)).toBe(true)
+    expect(out.text.endsWith('\n\n尾\n')).toBe(true)
+    expect(count(out.text, '老文字')).toBe(wrapped.includes('老文字') ? 1 : 0)
+  }
+})
+
+test('review2-A：配對是第一個結尾標記加上它上面最近的開頭標記；前面多出來的整行假開頭不會把文字吞進去', () => {
+  const real = renderCard(FIELDS, { ...META, rev: 3 })
+  const file = `# T\n\n${OPEN1}\n我寫的一大段話\n\n${real}\n\n尾\n`
+  const found = findCard(file)
+  if (!found || found === 'broken') throw new Error('card missing')
+  expect(found.rev).toBe(3)
+  expect(file.slice(0, found.start)).toBe(`# T\n\n${OPEN1}\n我寫的一大段話\n\n`)
+  const out = applyCard(file, renderCard(FIELDS, { ...META, rev: 4 }))
+  expect('text' in out && out.text.includes('我寫的一大段話')).toBe(true)
+  // 前面有孤兒結尾標記（上面沒有開頭）也不影響
+  const orphan = `# T\n\n${CARD_CLOSE}\n\n${real}\n`
+  const f2 = findCard(orphan)
+  expect(f2 && f2 !== 'broken' && f2.rev).toBe(3)
+  // 開頭標記後面沒有結尾標記：仍是 broken
+  expect(findCard(`# T\n\n${OPEN1}\n手寫`)).toBe('broken')
+  // 三個空格以內的縮排照舊算數
+  expect(findCard(`# T\n\n   ${OPEN1}\n   ${CARD_CLOSE}\n`)).toMatchObject({ rev: 1 })
+})

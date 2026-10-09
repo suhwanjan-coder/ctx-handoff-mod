@@ -32,7 +32,8 @@ const PS_REMOVE = re(`(?<!\\bgit )${START}(?:remove-item|ri|rm|del|erase|rd|rmdi
 const RECURSE_FLAG = re(`(?:^| )${RECURSE}`)
 // 管線下游的刪除命令（一段的開頭，或 { } 裡面）：Get-ChildItem x -Recurse | Remove-Item
 const PS_DELETE_STAGE = re('^(?:[%{(&] *)*(?:foreach(?:-object)? *\\{ *)?(?:remove-item|ri|rm|del|erase|rd|rmdir)(?=\\s|$)')
-const WHATIF = re('(?:^| )-whatif(?=[\\s:]|$)')
+// 只有單獨的 -WhatIf 或 -WhatIf:$true 是預演；-WhatIf:$false 是真的執行
+const WHATIF = re('(?:^| )-whatif(?:(?=\\s|$)|:\\$?true(?=\\s|$))')
 // 一個陳述（; && || 分開）：Remove-Item 帶 -WhatIf 只是預演；上游任何一段有 -Recurse、下游接刪除命令也算
 function removeItemHit(lines: string) {
   return lines.split(/;|&&|\|\|/).some(st => {
@@ -43,8 +44,11 @@ function removeItemHit(lines: string) {
   })
 }
 // del／rmdir／rd 的 /s（含 rd/s/q 這種沒有空格的寫法）
-const CMD_RD = re(`${START}(?:del|erase|rmdir|rd)(?: +${ANY})?/s(?=[\\s/]|$)`)
+// /s 後面是空白或結尾，或是單字母開關（/q、/f）：/s/q 是開關，/s/foo 是路徑
+const CMD_RD = re(`${START}(?:del|erase|rmdir|rd)(?: +${ANY})?/s(?=\\s|$|(?:/[a-z])+(?=\\s|$))`)
 const ROBOCOPY_MIR = re(`${START}robocopy +${ANY}/(?:mir|purge)${END}`)
+// robocopy /L 只列出會做什麼，不動檔案
+const ROBOCOPY_LIST = re(`${START}robocopy +${ANY}/l${END}`)
 const DOTNET_DELETE = re('\\[(?:system\\.)?io\\.directory\\]::delete\\([^)]*,\\s*\\$true')
 
 const PUSH_FORCE = git('push', `${ANY}(?:--force(?:-with-lease|-if-includes)?(?:=\\S+)?|-[a-zA-Z]*f[a-zA-Z]*|\\+${W})${END}`)
@@ -66,7 +70,11 @@ const RESTORE_WORKTREE = git('restore', `${ANY}(?:--worktree|-W)${END}`, '')
 const DROP_SQL = re('\\bdrop\\s+(?:table|database|schema)\\b')
 const TRUNCATE_SQL = re('\\btruncate\\s+table\\b')
 // DROP／TRUNCATE 只在指令真的呼叫 SQL 用戶端時才算（grep、Select-String、寫 .sql 檔的 heredoc 不算）
-const SQL_CLIENT = re(`${START}(?:sqlite3?|psql|mysql|mariadb|mysqlsh|sqlcmd|invoke-sqlcmd|duckdb|pgcli|clickhouse-client)(?:\\.exe)?${END}`)
+const SQL_CLIENT_CMD = re(`${START}(?:sqlite3?|psql|mysql|mariadb|mysqlsh|sqlcmd|invoke-sqlcmd|duckdb|pgcli|clickhouse-client|bq)(?:\\.exe)?(?=[\\s;|&)]|$)`)
+// python -c／node -e 裡用 SQL 函式庫執行（import sqlite3、sqlite3.connect、require('mysql2')…）；兩邊都要是單字邊界
+const INTERPRETER = re(`${START}(?:python[\\d.]*|py|node)(?:\\.exe)?(?=\\s|$)`)
+const SQL_LIB = re('(?<![\\w])(?:sqlite3|psycopg2?|pymysql|mysql\\.connector|mysql2|better-sqlite3|duckdb)(?![\\w])')
+const SQL_CLIENT = { test: (t: string) => SQL_CLIENT_CMD.test(t) || (INTERPRETER.test(t) && SQL_LIB.test(t)) }
 // python 腳本裡的 shutil.rmtree
 const RMTREE = re('\\bshutil\\.rmtree\\b')
 const PYTHON = re(`${START}(?:python[\\d.]*|py)(?:\\.exe)?${END}`)
@@ -79,7 +87,7 @@ const RULES: Rule[] = [
   { id: 'rm-r', label: 'rm -r', test: t => RM_UNIX.test(t.lines) },
   { id: 'remove-item-recurse', label: 'Remove-Item -Recurse', test: t => removeItemHit(t.lines) },
   { id: 'del-s', label: 'del／rmdir /s', test: t => CMD_RD.test(t.lines) },
-  { id: 'robocopy-mir', label: 'robocopy /MIR', test: t => ROBOCOPY_MIR.test(t.lines) },
+  { id: 'robocopy-mir', label: 'robocopy /MIR', test: t => ROBOCOPY_MIR.test(t.lines) && !ROBOCOPY_LIST.test(t.lines) },
   { id: 'dotnet-delete', label: '[IO.Directory]::Delete(…, $true)', test: t => DOTNET_DELETE.test(t.lines) },
   { id: 'rmtree', label: 'shutil.rmtree', test: t => RMTREE.test(t.flat) && PYTHON.test(t.flat) },
   { id: 'push-force', label: 'git push --force', test: t => PUSH_FORCE.test(t.lines) },
@@ -99,8 +107,29 @@ const RULES: Rule[] = [
 
 // 引號、跳脫、反引號拿掉，續行（行尾的 \ 或 PowerShell 的反引號）接起來，空白壓成一個空格：
 // 包在 "…"、'…'、`…` 裡的指令就和直接寫的一樣。lines 的換行變成「 ; 」，樣式不會跨行；flat 的換行變成空格
+// 引號裡的 ; & | 若是資料（路徑、字串）就換成不是分隔符號的字元，免得 "D:\R&D" 把指令切斷；
+// 引號是包裝的程式碼（-c、-Command、/c、-e、eval 後面那一段）就保持原樣，裡面的 ; && | 照樣是分隔符號。沒有收尾的引號當作普通字元
+const MASK: Record<string, string> = { ';': '\ue000', '&': '\ue001', '|': '\ue002' }
+const CODE_FLAG = /^(?:-[a-z]*[ce]|-command|-commandwithargs|-encodedcommand|\/[ck]|eval)$/i
+function maskQuoted(cmd: string) {
+  let out = ''
+  let i = 0
+  while (i < cmd.length) {
+    const ch = cmd[i] as string
+    if (ch !== '"' && ch !== "'") { out += ch; i++; continue }
+    let j = i + 1
+    while (j < cmd.length && cmd[j] !== ch) j += ch === '"' && cmd[j] === '\\' ? 2 : 1
+    if (j >= cmd.length) { out += ch; i++; continue }
+    const prev = /(\S+)\s*$/.exec(out)?.[1] ?? ''
+    const body = cmd.slice(i + 1, j)
+    out += ch + (CODE_FLAG.test(prev) ? body : body.replace(/[;&|]/g, c => MASK[c] ?? c)) + ch
+    i = j + 1
+  }
+  return out
+}
+
 export function normalize(command: string): Text {
-  const base = command
+  const base = maskQuoted(command)
     .replace(/\\\r?\n/g, ' ')
     .replace(/`\r?\n/g, ' ')
     .replace(/\\(["'`])/g, '$1')

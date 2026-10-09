@@ -10,7 +10,9 @@ export const CARD_CLOSE = '<!-- /ctx-handoff:card -->'
 // 標記要完全符合：開頭標記帶版次，結尾標記沒有。而且要「整行就是標記」（前後空白不算）、不在程式碼框裡才算數；
 // 內文裡提到標記的句子、程式碼框裡的範例都不是卡片
 const OPEN_RE = /<!-- ctx-handoff:card rev=(\d+) -->/
-const OPEN_LINE = /^\s*<!-- ctx-handoff:card rev=(\d+) -->\s*$/
+// 縮排最多 3 個空格（4 個空格或 tab 是縮排的程式碼區塊）
+const OPEN_LINE = /^ {0,3}<!-- ctx-handoff:card rev=(\d+) -->\s*$/
+const CLOSE_LINE = /^ {0,3}<!-- \/ctx-handoff:card -->\s*$/
 export const cardOpen = (rev: number) => `<!-- ctx-handoff:card rev=${rev} -->`
 
 export const STATUS_MAX = 120
@@ -77,6 +79,8 @@ function scanLines(text: string): Line[] {
   const out: Line[] = []
   let pos = 0
   let fence: { ch: string; len: number } | undefined
+  // 多行的 HTML 註解（<!-- … --> 跨行）：裡面的行和程式碼框一樣不算。卡片自己的標記是單行的，不會開出區域
+  let inComment = false
   for (const raw of text.split('\n')) {
     const start = pos
     pos += raw.length + 1
@@ -91,7 +95,25 @@ function scanLines(text: string): Line[] {
       fence = { ch: mark[0] ?? '`', len: mark.length }
       out.push({ start, text: bare, fenced: true })
     } else {
-      out.push({ start, text: bare, fenced: false })
+      let state: boolean = inComment
+      let i = 0
+      for (;;) {
+        if (state) {
+          const e = bare.indexOf('-->', i)
+          if (e === -1) break
+          state = false
+          i = e + 3
+        } else {
+          const b = bare.indexOf('<!--', i)
+          if (b === -1) break
+          const e = bare.indexOf('-->', b + 4)
+          if (e === -1) { state = true; break }
+          i = e + 3
+        }
+      }
+      // 這一行在註解區域裡、開出區域、或結束區域：都不算
+      out.push({ start, text: bare, fenced: inComment || state })
+      inComment = state
     }
   }
   return out
@@ -104,19 +126,26 @@ function frontMatterEnd(lines: Line[]) {
   return undefined
 }
 
-// 找檔案裡的卡片：第一個「整行就是開頭標記」到它後面「整行就是結尾標記」（都不在程式碼框裡）。
-// 有開頭沒結尾回 'broken'（不碰），沒有開頭回 undefined
+// 找檔案裡的卡片：先取第一個「整行就是結尾標記」（縮排最多 3 個空格，不在程式碼框或多行 HTML 註解裡），
+// 再取它上面最近的一個「整行就是開頭標記」。這樣開頭標記之前出現過的假標記（引用、範例）不會把使用者的文字吞進卡片。
+// 有開頭標記但後面沒有結尾標記回 'broken'（不碰），沒有開頭標記回 undefined
 export function findCard(text: string): FoundCard | 'broken' | undefined {
   const lines = scanLines(text)
-  const at = lines.findIndex(l => !l.fenced && OPEN_LINE.test(l.text))
-  if (at === -1) return undefined
-  const open = lines[at] as Line
-  const rev = Number(OPEN_LINE.exec(open.text)?.[1])
-  const start = open.start + open.text.indexOf('<!--')
-  const close = lines.slice(at + 1).find(l => !l.fenced && l.text.trim() === CARD_CLOSE)
-  if (!close) return 'broken'
-  const end = close.start + close.text.indexOf(CARD_CLOSE) + CARD_CLOSE.length
-  return { start, end, rev, text: text.slice(start, end) }
+  const isOpen = (l: Line) => !l.fenced && OPEN_LINE.test(l.text)
+  const opens = lines.map((l, i) => (isOpen(l) ? i : -1)).filter(i => i >= 0)
+  if (opens.length === 0) return undefined
+  for (let i = 0; i < lines.length; i++) {
+    const close = lines[i] as Line
+    if (close.fenced || !CLOSE_LINE.test(close.text)) continue
+    const at = opens.filter(o => o < i).at(-1)
+    // 這個結尾標記上面沒有開頭標記（孤兒）：看下一個
+    if (at === undefined) continue
+    const open = lines[at] as Line
+    const start = open.start + open.text.indexOf('<!--')
+    const end = close.start + close.text.indexOf(CARD_CLOSE) + CARD_CLOSE.length
+    return { start, end, rev: Number(OPEN_LINE.exec(open.text)?.[1]), text: text.slice(start, end) }
+  }
+  return 'broken'
 }
 
 // 卡片文字 → 欄位（手動改過也讀得回來；認不得的行略過）
