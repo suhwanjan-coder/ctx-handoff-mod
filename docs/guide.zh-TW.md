@@ -44,9 +44,9 @@ ctx-handoff 不會寫你專案裡的 `CLAUDE.md`、`AGENTS.md` 或 skill 檔案�
 
 每次交接之後（自動、`/handoff now`，或離席時存的那份），以及背景整理有進度備忘時，ctx-handoff 會重寫專案根目錄 `_HANDOFF.md` 裡的一塊：根目錄是你啟動 session 的資料夾，從 git worktree 啟動時是主工作樹。這一塊有更新時間（台北時間）、session 與版次、狀態、執行中的東西、等你回答的事、下一步、最後一次驗證、試過不行的做法（最多 5 條）與決策（最多 5 條）。
 
-- 只換 `<!-- ctx-handoff:card rev=N -->` 與 `<!-- /ctx-handoff:card -->` 之間的內容。第一次放在第一個 `# ` 標題後面，沒有標題就放最上面。你的文字、它的換行（CRLF 或 LF）與 BOM 都保持原樣。
-- 寫入前一刻再量一次檔案的修改時間與大小。這中間你存過檔，就重讀一次再試；又變了就放棄並提示，絕不覆蓋。
-- 每個 session 第一次寫之前，先把檔案複製到 `.ctx-handoff-backup/_HANDOFF.md.bak`。
+- 只換 `<!-- ctx-handoff:card rev=N -->` 與 `<!-- /ctx-handoff:card -->` 之間的內容。標記要整行就是標記、而且不在程式碼框裡才算，所以內文提到標記的句子、程式碼框裡的範例都不會被動到，卡片也不會放進或放到 YAML front matter 上面。第一次放在第一個 `# ` 標題後面，沒有標題就放最上面。你的文字、它的換行（CRLF 或 LF）與 BOM 都保持原樣。
+- 寫入前一刻再量一次檔案的修改時間與大小。這中間你存過檔，就重讀一次再試；又變了就放棄並提示，絕不覆蓋。更新進行中你改了卡片本身的話，這次更新作廢，下一次從你改過的版本接著來。不是 UTF-8 的 `_HANDOFF.md`（Big5、cp950、UTF-16）完全不寫，每個 session 提示一次。
+- 每個 session 第一次寫之前，先把檔案複製到 `.ctx-handoff-backup/_HANDOFF.md.bak`。有史以來第一次的備份另存成 `_HANDOFF.md.first.bak`，永遠不覆蓋。
 - 沒有 `_HANDOFF.md` 時不會建立。卡片只留在 ctx-handoff 內部，`/handoff` 會說明；打 `/handoff card init` 會建立檔案，內容是 `# 交接` 標題加狀態卡。
 
 卡片文字由一個低 effort 的請求產生（`card_model`，預設用整理筆記的模型），輸入是上一版卡片、session 摘要，以及交接摘要或進度備忘，不送整段對話。失敗的話，狀態與下一步直接從摘要填入。設定：`card`。
@@ -65,10 +65,10 @@ ctx-handoff 不會寫你專案裡的 `CLAUDE.md`、`AGENTS.md` 或 skill 檔案�
 
 Bash 或 PowerShell 要執行回不去的指令前，會先問你「允許」或「拒絕」。拒絕或關掉詢問框，指令就不執行，並告訴 Claude。你核准的守門先比對。
 
-- 會問的：`rm -r` 與 `rm -rf`、`Remove-Item -Recurse`、`rmdir /s`、`del /s`、`git push --force`、`-f` 與 `--force-with-lease`、`git reset --hard`、`git clean -f`、`git branch -D`、`git checkout -- .`、`git restore .`、`DROP TABLE` 與 `DROP DATABASE`、`TRUNCATE TABLE`、`npm publish`、`pnpm publish` 和 `format D:`。包在 `bash -c`、`sh -c`、`sudo`、`xargs`、`powershell -Command`、`cmd /c` 和 PowerShell 的 `-EncodedCommand` 裡面的指令也會檢查。
-- 不會問的：`rm file.txt`、`git push`、`grep -rf`、`git clean -n`、`git restore --staged .` 和 `npm publish --dry-run`。當成文字出現的指令，例如 `echo "rm -rf /"`，會問一次：引號裡的字也會掃，藏在引號裡的指令才不會漏掉。
+- 會問的：`rm -r` 與 `rm -rf`、`Remove-Item -Recurse`、`rmdir /s`、`del /s`、`git push --force`、`-f` 與 `--force-with-lease`、`git reset --hard`、`git clean -f`、`git branch -D`、`git checkout -- .`、`git restore .`、`git push --delete`、`git stash drop`、`git filter-branch`、`robocopy /MIR`、`[IO.Directory]::Delete`、`shutil.rmtree`、把 `-Recurse` 的清單接到 `Remove-Item`、由 `psql` 這類 SQL 用戶端執行的 `DROP TABLE`、`DROP DATABASE` 與 `TRUNCATE TABLE`、`npm publish`、`pnpm publish` 和 `format D:`。包在 `bash -c`、`sh -c`、`sudo`、`xargs`、`powershell -Command`、`cmd /c` 和 PowerShell 的 `-EncodedCommand` 裡面的指令也會檢查。
+- 不會問的：`rm file.txt`、`git push`、`grep -rf`、`git clean -n`、`git restore --staged .`、`npm publish --dry-run`、`Remove-Item -WhatIf`，以及沒有 SQL 用戶端執行的 SQL 文字，例如 `grep` 的搜尋字串。當成文字出現的指令，例如 `echo "rm -rf /"`，會問一次：引號裡的字也會掃，藏在引號裡的指令才不會漏掉。
 
-沒有畫面可以問時（`claude -p`、SDK，或沒有接上任何畫面），指令照常執行，只留一行紀錄，排程工作才不會卡住。設定：`command_guard`。
+沒有畫面可以問時（`claude -p`、SDK，或沒有接上任何畫面），指令照常執行，只留一行紀錄，排程工作才不會卡住。有畫面但沒人回答時，詢問 120 秒後逾時，指令被拒絕，並告訴 Claude 改用可復原的做法或之後再請使用者確認；排程或 `/loop` 觸發的回合不問，直接拒絕。Monitor 和 MCP 工具執行的指令不在檢查範圍。設定：`command_guard`。
 
 ### 防呆提醒
 
@@ -159,7 +159,7 @@ Bash 或 PowerShell 要執行回不去的指令前，會先問你「允許」或
 | 專案筆記 | `~/.claude/projects/<專案路徑>/memory/ctx-handoff.md` |
 | 從面板刪除前的備份 | 筆記檔旁邊的 `.ctx-handoff-backup/` |
 | 狀態卡 | 專案根目錄的 `_HANDOFF.md`，只動標記之間 |
-| 每個 session 第一次寫卡片之前的 `_HANDOFF.md` 備份 | 專案根目錄的 `.ctx-handoff-backup/_HANDOFF.md.bak` |
+| 每個 session 第一次寫卡片之前的 `_HANDOFF.md` 備份，以及有史以來第一份 | 專案根目錄的 `.ctx-handoff-backup/_HANDOFF.md.bak` 與 `_HANDOFF.md.first.bak` |
 | 面板上的設定、最近的交接摘要、進度、狀態卡的副本、錯誤紀錄 | `~/.claude/plugins/store/ctx-handoff_*.json` |
 
 **它能做什麼。** mod 沒有沙箱，會用你的權限執行。不用執行就能檢查它用了什麼：`claude plugin validate <ctx-handoff 資料夾>` 會印出 `hooks:`（它接收的事件）與 `calls:`（程式呼叫的功能）兩行，意思如下：

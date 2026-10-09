@@ -67,6 +67,12 @@ const fresh = () => ({
   bigFiles: new Set<string>(),
   // 讀完這個路徑之後做的事（模擬讀檔和寫檔之間，使用者改了檔案）
   afterRead: undefined as ((path: string) => void) | undefined,
+  // 這些路徑的內容是原始位元組（files 裡放有損解碼的文字，讓 exists／stat 照常）
+  binaryFiles: new Map<string, Uint8Array>(),
+  // 模型整理狀態卡的請求進行中發生的事（模擬使用者在這段時間手改卡片）
+  onCard: undefined as (() => void) | undefined,
+  // 對話框一直沒人回答
+  askHang: false,
   // 位元組讀檔不能用（只回文字）：模擬 $.fs.read 的 bytes 模式或 atob／TextDecoder 不存在時的退路
   textOnly: false,
   // $.session.usage() 的 context.tokens 改成這個值（有 tokens 這個鍵就用，值可以是 undefined＝還沒有讀數）；沒設就用 world() 的 tokens
@@ -125,6 +131,7 @@ export const world = (on: On, tokens: number, window = 1_000_000, store: Record<
     if (ev.tool === 'AskUserQuestion') {
       const q = ev.questions?.[0]
       asks.push({ question: q?.question ?? '', ...(q?.header ? { header: q.header } : {}), options: (q?.options ?? []).map(o => o.label) })
+      if (ctl.askHang) return new Promise<never>(() => {})
       if (ctl.askAnswer === 'dismiss') return { isError: true, result: 'dismissed', text: 'dismissed' } as never
       return { result: { answers: { [q?.question ?? '']: ctl.askAnswer } }, text: 'answered' } as never
     }
@@ -154,11 +161,14 @@ export const world = (on: On, tokens: number, window = 1_000_000, store: Record<
     const text = files.get(norm(e.path)) ?? ''
     if (found) ctl.afterRead?.(norm(e.path))
     if (!found) return { deny: 'missing' }
+    // 非 UTF-8 的檔案（cp950、UTF-16…）：位元組模式回原始位元組，文字模式回有損解碼
+    const raw = ctl.binaryFiles.get(norm(e.path))
     if (e.as === 'bytes' && !ctl.textOnly) {
       let bin = ''
-      for (const b of new TextEncoder().encode(text)) bin += String.fromCharCode(b)
+      for (const b of raw ?? new TextEncoder().encode(text)) bin += String.fromCharCode(b)
       return { value: { base64: btoa(bin) } } as never
     }
+    if (raw) return { value: new TextDecoder().decode(raw) }
     return { value: text }
   })
   // 修改時間用內容的雜湊代替：內容變了時間就變，沒變就不變
@@ -203,6 +213,7 @@ export const world = (on: On, tokens: number, window = 1_000_000, store: Record<
   on('model.complete', async (_$, e: { model: string; effort?: string; system?: string; prompt: string; timeoutMs?: number }) => {
     if (e.system?.includes('維護「狀態卡」')) {
       cards.push(e)
+      ctl.onCard?.()
       if (ctl.cardFails) return { value: { isAnswered: false as const, reason: 'aborted' as const, usage: usage(0) } }
       return { value: { isAnswered: true as const, text: ctl.cardReply, usage: usage(0) } }
     }

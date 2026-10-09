@@ -44,9 +44,9 @@ The next conversation in that folder is told about it once, within 24 hours: "th
 
 After every handoff (automatic, `/handoff now`, or the one saved while you're away), and whenever a background notes update has a progress note, ctx-handoff rewrites one block in the `_HANDOFF.md` at the root of your project: the folder you started in, or the main worktree when you started from a git worktree. The block holds the update time (Taipei time), the session and revision, the state, what's running, what waits for you, the next step, the last check, what didn't work (up to 5) and decisions (up to 5).
 
-- Only the text between `<!-- ctx-handoff:card rev=N -->` and `<!-- /ctx-handoff:card -->` is replaced. The first time, the block goes right after the first `# ` heading, or at the top when there is none. Your text, its line endings (CRLF or LF) and its BOM stay exactly as they were.
-- Right before writing, the file's modification time and size are checked again. If you saved in between, it reads the file once more and tries again; if it changed again, it gives up with a notice and never overwrites.
-- The file is copied to `.ctx-handoff-backup/_HANDOFF.md.bak` before the first write of each session.
+- Only the text between `<!-- ctx-handoff:card rev=N -->` and `<!-- /ctx-handoff:card -->` is replaced. A marker counts only when it is the whole line and outside a code block, so a sentence or a fenced example that mentions it is left alone, and the block never goes inside or above YAML front matter. The first time, the block goes right after the first `# ` heading, or at the top when there is none. Your text, its line endings (CRLF or LF) and its BOM stay exactly as they were.
+- Right before writing, the file's modification time and size are checked again. If you saved in between, it reads the file once more and tries again; if it changed again, it gives up with a notice and never overwrites. If you edited the card itself while the update was being written, that update is dropped and the next one starts from your version. A `_HANDOFF.md` that isn't UTF-8 (Big5, cp950, UTF-16) is never written, and a notice says so once per session.
+- The file is copied to `.ctx-handoff-backup/_HANDOFF.md.bak` before the first write of each session. The very first copy ever is also kept as `_HANDOFF.md.first.bak` and never overwritten.
 - With no `_HANDOFF.md`, nothing is created. The card is kept inside ctx-handoff and `/handoff` says so; `/handoff card init` creates the file with a `# 交接` heading and the card.
 
 The card text comes from one low-effort request (`card_model`, by default the notes model) whose input is the previous card, the session digest and the handoff summary or progress note, not the whole conversation. If that fails, the state and next step are filled straight from the summary. Setting: `card`.
@@ -65,10 +65,10 @@ When the conversation is compacted (`/compact` or automatically), a notice shows
 
 Before Bash or PowerShell runs a command that can't be undone, you get an Allow or Deny question. Deny, or closing the question, stops the command and tells Claude. Guards you approved are checked first.
 
-- Asked about: `rm -r` and `rm -rf`, `Remove-Item -Recurse`, `rmdir /s`, `del /s`, `git push --force`, `-f` and `--force-with-lease`, `git reset --hard`, `git clean -f`, `git branch -D`, `git checkout -- .`, `git restore .`, `DROP TABLE` and `DROP DATABASE`, `TRUNCATE TABLE`, `npm publish`, `pnpm publish` and `format D:`. Commands inside `bash -c`, `sh -c`, `sudo`, `xargs`, `powershell -Command`, `cmd /c` and PowerShell's `-EncodedCommand` are checked too.
-- Not asked about: `rm file.txt`, `git push`, `grep -rf`, `git clean -n`, `git restore --staged .` and `npm publish --dry-run`. A command shown as text, such as `echo "rm -rf /"`, is asked about once: quoted text is scanned too, so a command hidden inside quotes can't slip through.
+- Asked about: `rm -r` and `rm -rf`, `Remove-Item -Recurse`, `rmdir /s`, `del /s`, `git push --force`, `-f` and `--force-with-lease`, `git reset --hard`, `git clean -f`, `git branch -D`, `git checkout -- .`, `git restore .`, `git push --delete`, `git stash drop`, `git filter-branch`, `robocopy /MIR`, `[IO.Directory]::Delete`, `shutil.rmtree`, a `-Recurse` listing piped into `Remove-Item`, `DROP TABLE` and `DROP DATABASE` and `TRUNCATE TABLE` when a SQL client such as `psql` runs them, `npm publish`, `pnpm publish` and `format D:`. Commands inside `bash -c`, `sh -c`, `sudo`, `xargs`, `powershell -Command`, `cmd /c` and PowerShell's `-EncodedCommand` are checked too.
+- Not asked about: `rm file.txt`, `git push`, `grep -rf`, `git clean -n`, `git restore --staged .`, `npm publish --dry-run`, `Remove-Item -WhatIf` and SQL text that no SQL client runs, such as a `grep` pattern. A command shown as text, such as `echo "rm -rf /"`, is asked about once: quoted text is scanned too, so a command hidden inside quotes can't slip through.
 
-With no screen to ask on (`claude -p`, the SDK, or no surface attached), the command runs as before and a line is logged, so scheduled tasks keep working. Setting: `command_guard`.
+With no screen to ask on (`claude -p`, the SDK, or no surface attached), the command runs as before and a line is logged, so scheduled tasks keep working. With a screen but nobody answering, the question times out after 120 seconds and the command is denied with a note to use a reversible approach or ask again later; a turn started by a scheduled task or `/loop` is denied at once without asking. Commands run by Monitor or MCP tools are not checked. Setting: `command_guard`.
 
 ### Nudges
 
@@ -159,7 +159,7 @@ You won't need these in normal use. If `/handoff` is taken by your own command o
 | Project notes | `~/.claude/projects/<project path>/memory/ctx-handoff.md` |
 | Backups made before deleting from the panel | `.ctx-handoff-backup/` next to the notes file |
 | The status card | `_HANDOFF.md` at the project root, between its markers only |
-| A copy of `_HANDOFF.md` before a session's first card write | `.ctx-handoff-backup/_HANDOFF.md.bak` at the project root |
+| A copy of `_HANDOFF.md` before a session's first card write, and the first copy ever | `.ctx-handoff-backup/_HANDOFF.md.bak` and `_HANDOFF.md.first.bak` at the project root |
 | Settings set on the panel, recent handoff summaries, progress notes, a copy of the status card, errors | `~/.claude/plugins/store/ctx-handoff_*.json` |
 
 **What it's allowed to do.** Mods aren't sandboxed; this one runs with your permissions. To see what it uses without running it, run `claude plugin validate <ctx-handoff folder>`. It prints a `hooks:` line (events it receives) and a `calls:` line (what its code calls):

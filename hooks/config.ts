@@ -91,6 +91,8 @@ export const cfg: Config = { ...CONFIG_DEFAULTS }
 export const resetConfig = () => { Object.assign(cfg, CONFIG_DEFAULTS) }
 
 export const KEEP = 5
+// 不可逆指令的詢問等多久：沒人回答（排程、/loop 無人看管）就當作拒絕
+export const CMD_ASK_TIMEOUT_MS = 120_000
 // 狀態卡：一次整理請求的輸出上限、時限，以及交接時最多等它多久才 /clear
 export const CARD_MAX_TOKENS = 2_000
 export const CARD_TIMEOUT_MS = 2 * 60_000

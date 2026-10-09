@@ -58,6 +58,8 @@ export const rt = {
   digestCache: undefined as { path: string; mtimeMs: number; size: number; digest: Digest } | undefined,
   // session.start 的 isInteractive：false（claude -p、SDK）沒有畫面可以問，不可逆指令確認直接放行
   interactive: undefined as boolean | undefined,
+  // 最近一次 prompt.submit 的來源種類（composer、scheduled-trigger…）
+  promptKind: undefined as string | undefined,
   // 最近一次壓縮前後的 token 數（after 可能沒有）；stops 是壓縮後已經判斷過幾次 Stop
   compact: undefined as { before: number | undefined; after: number | undefined; stops: number } | undefined,
 }
@@ -93,5 +95,6 @@ export function resetRuntime() {
   rt.transcript = undefined
   rt.digestCache = undefined
   rt.interactive = undefined
+  rt.promptKind = undefined
   rt.compact = undefined
 }

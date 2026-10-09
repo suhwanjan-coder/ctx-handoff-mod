@@ -47,13 +47,19 @@ const cut = (s: string, n: number) => {
 const blocksOf = (e: Entry): Block[] => (Array.isArray(e.message?.content) ? e.message.content : [])
 const main = (e: Entry) => e.isSidechain !== true
 
-// 使用者自己打的訊息：字串內容，或有文字區塊（只有工具結果的不算）；系統提醒與指令標籤開頭的不算
+// 系統塞進使用者訊息的內容：已知的標籤（<command-…>、<system-reminder>、<local-command-…>），或整則只有一行方括號（[Request interrupted by user]）。
+// 其他用 < 開頭的訊息（使用者自己貼的 HTML、尖括號）照常算
+const SYSTEM_TAG = /^<(?:command-|system-reminder|local-command)/
+const BRACKET_LINE = /^\[[^\]\n]{1,100}\]$/
+export const isSystemText = (t: string) => SYSTEM_TAG.test(t) || BRACKET_LINE.test(t)
+
+// 使用者自己打的訊息：字串內容，或有文字區塊（只有工具結果的不算）；系統提醒與指令標籤不算
 function userPrompt(e: Entry): string | undefined {
   if (e.type !== 'user' || !main(e) || e.isMeta || e.isCompactSummary || e.message?.role !== 'user') return undefined
   const c = e.message.content
   const text = typeof c === 'string' ? c : blocksOf(e).filter(b => b.type === 'text').map(b => b.text ?? '').join('\n')
   const t = text.trim()
-  return t && !t.startsWith('<') ? t : undefined
+  return t && !isSystemText(t) ? t : undefined
 }
 
 const ARG_KEYS = ['command', 'file_path', 'notebook_path', 'path', 'pattern', 'url', 'query', 'description', 'prompt']
@@ -97,7 +103,7 @@ export const hasContent = (d: Digest) => d.task !== '' || d.reply !== '' || d.to
 
 // 對話檔讀不到時的後備：從 $.session.messages() 的列做（沒有時間與 TTL）
 export function digestOfRows(rows: readonly { role: string; text: string; toolUses: readonly { tool: string; input: Record<string, unknown> }[] }[]): Digest {
-  const task = rows.findLast(r => r.role === 'user' && r.text.trim() && !r.text.trim().startsWith('<'))?.text ?? ''
+  const task = rows.findLast(r => r.role === 'user' && r.text.trim() && !isSystemText(r.text.trim()))?.text ?? ''
   const tools = rows.flatMap(r => (r.role === 'assistant' ? r.toolUses : [])).slice(-3).map(u => toolBrief({ name: u.tool, input: u.input }))
   const reply = rows.findLast(r => r.role === 'assistant' && r.text.trim())?.text ?? ''
   return { task: cut(task, 80), lastAt: undefined, tools, reply: cut(reply, 100), ttl: { kind: 'unknown' } }

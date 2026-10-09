@@ -26,10 +26,32 @@ const re = (source: string, flags = 'i') => new RegExp(source, flags)
 const git = (sub: string, rest: string, flags = 'i') => re(`${START}git +${ANY}${sub} +${rest}`, flags)
 
 const RM_UNIX = re(`(?<!\\bgit )${START}rm(?:\\.exe)? +${ANY}(?:-[fiIdv]*[rR][fiIdvrR]*|--recursive)${END}`)
-const PS_REMOVE = re(`(?<!\\bgit )${START}(?:remove-item|ri|rm|del|erase|rd|rmdir) +${ANY}-r(?:e(?:c(?:u(?:r(?:s(?:e)?)?)?)?)?)?(?=[\\s:]|$)`)
-const CMD_RD = re(`${START}(?:del|erase|rmdir|rd) +${ANY}/s${END}`)
+// -Recurse（含縮寫 -r、-rec…）；-Recurse:$false 是明講不遞迴，不算
+const RECURSE = '-r(?:e(?:c(?:u(?:r(?:s(?:e)?)?)?)?)?)?(?=[\\s:]|$)(?!:\\$?false)'
+const PS_REMOVE = re(`(?<!\\bgit )${START}(?:remove-item|ri|rm|del|erase|rd|rmdir) +${ANY}${RECURSE}`)
+const RECURSE_FLAG = re(`(?:^| )${RECURSE}`)
+// 管線下游的刪除命令（一段的開頭，或 { } 裡面）：Get-ChildItem x -Recurse | Remove-Item
+const PS_DELETE_STAGE = re('^(?:[%{(&] *)*(?:foreach(?:-object)? *\\{ *)?(?:remove-item|ri|rm|del|erase|rd|rmdir)(?=\\s|$)')
+const WHATIF = re('(?:^| )-whatif(?=[\\s:]|$)')
+// 一個陳述（; && || 分開）：Remove-Item 帶 -WhatIf 只是預演；上游任何一段有 -Recurse、下游接刪除命令也算
+function removeItemHit(lines: string) {
+  return lines.split(/;|&&|\|\|/).some(st => {
+    if (WHATIF.test(st)) return false
+    if (PS_REMOVE.test(st)) return true
+    const stages = st.split('|').map(x => x.trim())
+    return stages.some((stage, i) => i > 0 && PS_DELETE_STAGE.test(stage) && stages.slice(0, i).some(up => RECURSE_FLAG.test(up)))
+  })
+}
+// del／rmdir／rd 的 /s（含 rd/s/q 這種沒有空格的寫法）
+const CMD_RD = re(`${START}(?:del|erase|rmdir|rd)(?: +${ANY})?/s(?=[\\s/]|$)`)
+const ROBOCOPY_MIR = re(`${START}robocopy +${ANY}/(?:mir|purge)${END}`)
+const DOTNET_DELETE = re('\\[(?:system\\.)?io\\.directory\\]::delete\\([^)]*,\\s*\\$true')
 
 const PUSH_FORCE = git('push', `${ANY}(?:--force(?:-with-lease|-if-includes)?(?:=\\S+)?|-[a-zA-Z]*f[a-zA-Z]*|\\+${W})${END}`)
+// 刪遠端分支：--delete、-d，或 <remote> :<ref>
+const PUSH_DELETE = git('push', `${ANY}(?:--delete|-[a-zA-Z]*d[a-zA-Z]*|:${W})${END}`)
+const STASH_DROP = git('stash', `(?:drop|clear)${END}`)
+const FILTER_BRANCH = re(`${START}git +${ANY}(?:filter-branch|filter-repo)${END}`)
 const RESET_HARD = git('reset', `${ANY}--hard${END}`)
 const CLEAN_FORCE = git('clean', `${ANY}(?:--force|-[a-zA-Z]*f[a-zA-Z]*)${END}`)
 // git clean 帶 -n／--dry-run 只是預演
@@ -43,6 +65,11 @@ const RESTORE_WORKTREE = git('restore', `${ANY}(?:--worktree|-W)${END}`, '')
 
 const DROP_SQL = re('\\bdrop\\s+(?:table|database|schema)\\b')
 const TRUNCATE_SQL = re('\\btruncate\\s+table\\b')
+// DROP／TRUNCATE 只在指令真的呼叫 SQL 用戶端時才算（grep、Select-String、寫 .sql 檔的 heredoc 不算）
+const SQL_CLIENT = re(`${START}(?:sqlite3?|psql|mysql|mariadb|mysqlsh|sqlcmd|invoke-sqlcmd|duckdb|pgcli|clickhouse-client)(?:\\.exe)?${END}`)
+// python 腳本裡的 shutil.rmtree
+const RMTREE = re('\\bshutil\\.rmtree\\b')
+const PYTHON = re(`${START}(?:python[\\d.]*|py)(?:\\.exe)?${END}`)
 const PUBLISH = re(`${START}(?:npm|pnpm|yarn|bun) +${ANY}(?:publish|unpublish)${END}`)
 const PUBLISH_DRY = re(`--dry-run${END}`)
 const FORMAT_DRIVE = re(`${START}format(?:\\.com|\\.exe)? +[a-z]:`)
@@ -50,16 +77,22 @@ const FORMAT_VOLUME = re(`${START}(?:format-volume|clear-disk)\\b`)
 
 const RULES: Rule[] = [
   { id: 'rm-r', label: 'rm -r', test: t => RM_UNIX.test(t.lines) },
-  { id: 'remove-item-recurse', label: 'Remove-Item -Recurse', test: t => PS_REMOVE.test(t.lines) },
+  { id: 'remove-item-recurse', label: 'Remove-Item -Recurse', test: t => removeItemHit(t.lines) },
   { id: 'del-s', label: 'del／rmdir /s', test: t => CMD_RD.test(t.lines) },
+  { id: 'robocopy-mir', label: 'robocopy /MIR', test: t => ROBOCOPY_MIR.test(t.lines) },
+  { id: 'dotnet-delete', label: '[IO.Directory]::Delete(…, $true)', test: t => DOTNET_DELETE.test(t.lines) },
+  { id: 'rmtree', label: 'shutil.rmtree', test: t => RMTREE.test(t.flat) && PYTHON.test(t.flat) },
   { id: 'push-force', label: 'git push --force', test: t => PUSH_FORCE.test(t.lines) },
+  { id: 'push-delete', label: 'git push --delete', test: t => PUSH_DELETE.test(t.lines) },
+  { id: 'stash-drop', label: 'git stash drop／clear', test: t => STASH_DROP.test(t.lines) },
+  { id: 'filter-branch', label: 'git filter-branch', test: t => FILTER_BRANCH.test(t.lines) },
   { id: 'reset-hard', label: 'git reset --hard', test: t => RESET_HARD.test(t.lines) },
   { id: 'clean-force', label: 'git clean -f', test: t => CLEAN_FORCE.test(t.lines) && !CLEAN_DRY.test(t.lines) },
   { id: 'branch-D', label: 'git branch -D', test: t => BRANCH_DELETE.test(t.lines) },
   { id: 'checkout-all', label: 'git checkout -- .', test: t => CHECKOUT_ALL.test(t.lines) },
   { id: 'restore-all', label: 'git restore .', test: t => RESTORE_ALL.test(t.lines) && (!RESTORE_STAGED_ONLY.test(t.lines) || RESTORE_WORKTREE.test(t.lines)) },
-  { id: 'drop-sql', label: 'DROP TABLE／DATABASE', test: t => DROP_SQL.test(t.flat) },
-  { id: 'truncate-sql', label: 'TRUNCATE TABLE', test: t => TRUNCATE_SQL.test(t.flat) },
+  { id: 'drop-sql', label: 'DROP TABLE／DATABASE', test: t => DROP_SQL.test(t.flat) && SQL_CLIENT.test(t.flat) },
+  { id: 'truncate-sql', label: 'TRUNCATE TABLE', test: t => TRUNCATE_SQL.test(t.flat) && SQL_CLIENT.test(t.flat) },
   { id: 'publish', label: 'npm／pnpm publish', test: t => PUBLISH.test(t.lines) && !PUBLISH_DRY.test(t.lines) },
   { id: 'format', label: 'format', test: t => FORMAT_DRIVE.test(t.lines) || FORMAT_VOLUME.test(t.lines) },
 ]

@@ -80,7 +80,7 @@ Preferences, corrections and facts become one Markdown notes file per project, k
 
 ### Keeps a status card in `_HANDOFF.md`
 
-After each handoff, and whenever the background update has progress, the block between `<!-- ctx-handoff:card rev=N -->` and `<!-- /ctx-handoff:card -->` in your project's `_HANDOFF.md` is rewritten: state, what's running, what waits for you, the next step, the last check, what didn't work and what was decided. Everything outside the markers is left byte for byte as you wrote it, and the file is backed up before the first write of each session. No `_HANDOFF.md`? Nothing is created until you run `/handoff card init`.
+After each handoff, and whenever the background update has progress, the block between `<!-- ctx-handoff:card rev=N -->` and `<!-- /ctx-handoff:card -->` in your project's `_HANDOFF.md` is rewritten: state, what's running, what waits for you, the next step, the last check, what didn't work and what was decided. Everything outside the markers is left byte for byte as you wrote it, and the file is backed up before the first write of each session (the first copy ever is kept for good). No `_HANDOFF.md`? Nothing is created until you run `/handoff card init`.
 
 ### Catches the usual slips
 
@@ -88,7 +88,7 @@ After each handoff, and whenever the background update has progress, the block b
 
 ### Asks before commands you can't undo
 
-When Bash or PowerShell is about to run `rm -rf`, `git push --force`, `git reset --hard`, `DROP TABLE`, `npm publish` or the like, you get an Allow or Deny question first. Denying, or closing the question, stops the command. In `claude -p`, where there is no screen to ask on, the command runs as before and a line is logged. Setting: `command_guard`.
+When Bash or PowerShell is about to run `rm -rf`, `git push --force`, `git reset --hard`, `DROP TABLE`, `npm publish` or the like, you get an Allow or Deny question first. Denying, or closing the question, stops the command. In `claude -p`, where there is no screen to ask on, the command runs as before and a line is logged. If nobody answers for 120 seconds, or a scheduled task started the turn, it's denied instead. Setting: `command_guard`.
 
 ### Guards you approve, one panel for everything
 

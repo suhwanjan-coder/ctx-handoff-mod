@@ -36,6 +36,9 @@ ctx-handoff 每個版本值得注意的改動。格式依照 [Keep a Changelog](
 ### 修正
 
 - 面板「提草稿」提示列裡有一個什麼都沒做的 `replace`。
+- **狀態卡的安全性（審查發現）：** 欄位裡看起來像卡片標記的文字，會讓卡片提早結束，每次重寫都多留一堆殘渣；現在標記要整行、不在程式碼框裡才算，YAML front matter 不會被寫進去，不是 UTF-8 的檔案不動並提示，有史以來第一份備份另存成 `_HANDOFF.md.first.bak`，更新進行中你改了卡片的話這次更新作廢。
+- **不可逆指令確認（審查發現）：** 沒人回答的詢問 120 秒後逾時並拒絕，排程或 `/loop` 觸發的回合不問、直接拒絕，多抓了幾種破壞性指令（`robocopy /MIR`、`git push --delete`、`git stash drop`、`git filter-branch`、把 `-Recurse` 的清單接到 `Remove-Item`、`[IO.Directory]::Delete`、`rd/s/q`、`shutil.rmtree`），`Remove-Item -WhatIf` 和沒有 SQL 用戶端執行的 SQL 文字不再詢問。
+- **session 摘要（審查發現）：** `[Request interrupted by user]` 這類行不再被當成目前工作。
 
 ## [0.5.0] - 2026-10-08
 

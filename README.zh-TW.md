@@ -80,7 +80,7 @@ ctx-handoff 是持續成長的長時間工作工具箱：和 Claude 一起工作
 
 ### 在 `_HANDOFF.md` 維護狀態卡
 
-每次交接之後，以及背景整理有進度時，會重寫專案 `_HANDOFF.md` 裡 `<!-- ctx-handoff:card rev=N -->` 與 `<!-- /ctx-handoff:card -->` 之間的一塊：狀態、執行中的東西、等你回答的事、下一步、最後一次驗證、試過不行的做法與已定案的決定。標記以外的內容一個字都不動，每個 session 第一次寫之前會先備份原檔。專案沒有 `_HANDOFF.md` 時不會自己建立，要打 `/handoff card init`。
+每次交接之後，以及背景整理有進度時，會重寫專案 `_HANDOFF.md` 裡 `<!-- ctx-handoff:card rev=N -->` 與 `<!-- /ctx-handoff:card -->` 之間的一塊：狀態、執行中的東西、等你回答的事、下一步、最後一次驗證、試過不行的做法與已定案的決定。標記以外的內容一個字都不動，每個 session 第一次寫之前會先備份原檔（有史以來第一份永遠保留）。專案沒有 `_HANDOFF.md` 時不會自己建立，要打 `/handoff card init`。
 
 ### 抓住常犯的小錯
 
@@ -88,7 +88,7 @@ ctx-handoff 是持續成長的長時間工作工具箱：和 Claude 一起工作
 
 ### 做了回不去的指令前先問你
 
-Bash 或 PowerShell 要執行 `rm -rf`、`git push --force`、`git reset --hard`、`DROP TABLE`、`npm publish` 這類指令時，會先問你「允許」或「拒絕」。拒絕或關掉詢問框就不執行。在 `claude -p` 這種沒有畫面可以問的環境，指令照常執行，只留一行紀錄。設定：`command_guard`。
+Bash 或 PowerShell 要執行 `rm -rf`、`git push --force`、`git reset --hard`、`DROP TABLE`、`npm publish` 這類指令時，會先問你「允許」或「拒絕」。拒絕或關掉詢問框就不執行。在 `claude -p` 這種沒有畫面可以問的環境，指令照常執行，只留一行紀錄。沒人回答超過 120 秒，或回合是排程觸發的，就改成拒絕。設定：`command_guard`。
 
 ### 你核准的守門，一個面板管全部
 

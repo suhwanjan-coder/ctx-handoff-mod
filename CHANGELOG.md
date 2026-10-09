@@ -36,6 +36,9 @@ A handoff now leaves a status card you can read at a glance, the mod no longer r
 ### Fixed
 
 - The panel's "draft guards" note ran a `replace` that did nothing.
+- **Status card safety (found in review):** text that looked like a card marker inside a field could end the card early and pile up junk on every rewrite; markers now count only as a whole line outside code blocks, YAML front matter is never written into, files that aren't UTF-8 are left alone with a notice, the first-ever backup is kept as `_HANDOFF.md.first.bak`, and an update is dropped when you edited the card while it was being written.
+- **Irreversible command check (found in review):** an unanswered question times out after 120 seconds and denies, a turn started by a scheduled task or `/loop` is denied without asking, more destructive commands are caught (`robocopy /MIR`, `git push --delete`, `git stash drop`, `git filter-branch`, a `-Recurse` listing piped into `Remove-Item`, `[IO.Directory]::Delete`, `rd/s/q`, `shutil.rmtree`), and `Remove-Item -WhatIf` and SQL text that no SQL client runs no longer ask.
+- **Session digest (found in review):** `[Request interrupted by user]` and similar lines are no longer shown as the current work.
 
 ## [0.5.0] - 2026-10-08
 

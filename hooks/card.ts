@@ -7,8 +7,10 @@ import { stateLabel } from './progress'
 
 export const CARD_FILE = '_HANDOFF.md'
 export const CARD_CLOSE = '<!-- /ctx-handoff:card -->'
-// 標記要完全符合：開頭標記帶版次，結尾標記沒有
+// 標記要完全符合：開頭標記帶版次，結尾標記沒有。而且要「整行就是標記」（前後空白不算）、不在程式碼框裡才算數；
+// 內文裡提到標記的句子、程式碼框裡的範例都不是卡片
 const OPEN_RE = /<!-- ctx-handoff:card rev=(\d+) -->/
+const OPEN_LINE = /^\s*<!-- ctx-handoff:card rev=(\d+) -->\s*$/
 export const cardOpen = (rev: number) => `<!-- ctx-handoff:card rev=${rev} -->`
 
 export const STATUS_MAX = 120
@@ -33,7 +35,9 @@ const cut = (s: string, n: number) => {
   const chars = [...s]
   return chars.length > n ? `${chars.slice(0, n - 1).join('')}…` : s
 }
-const flat = (s: string) => s.replace(/\s+/g, ' ').trim()
+// 欄位值裡的 HTML 註解記號換成相近的字：欄位永遠不可能長出標記文字（否則一個欄位裡的 <!-- /ctx-handoff:card --> 會提早結束卡片，之後每次重寫都留下殘渣）
+export const defang = (s: string) => s.replace(/<!--/g, '‹!--').replace(/-->/g, '--›')
+const flat = (s: string) => defang(s.replace(/\s+/g, ' ')).trim()
 
 // 台北時間（UTC+8，沒有日光節約）的 YYYY/MM/DD HH:mm
 export function taipeiStamp(ms: number) {
@@ -46,9 +50,10 @@ export function taipeiStamp(ms: number) {
 
 // 卡片本體（含前後標記）。換行一律先用 \n，套進檔案時再換成檔案原本的換行
 export function renderCard(f: CardFields, meta: { at: number; sid: string; rev: number }): string {
-  const one = (v: string) => v || NONE
+  // 寫出去之前再清一次：欄位值不論從哪來（模型、摘要、手改後讀回來）都不能帶標記文字
+  const one = (v: string) => defang(v) || NONE
   const list = (label: string, items: string[]) =>
-    items.length ? [`- ${label}：`, ...items.map(i => `  - ${i}`)] : [`- ${label}：${NONE}`]
+    items.length ? [`- ${label}：`, ...items.map(i => `  - ${defang(i)}`)] : [`- ${label}：${NONE}`]
   return [
     cardOpen(meta.rev),
     '## 狀態卡',
@@ -66,14 +71,52 @@ export function renderCard(f: CardFields, meta: { at: number; sid: string; rev: 
 
 export type FoundCard = { start: number; end: number; rev: number; text: string }
 
-// 找檔案裡的卡片：第一個開頭標記到它後面的結尾標記。有開頭沒結尾回 'broken'（不碰），沒有開頭回 undefined
+// 逐行掃描：每行的起點、去掉行尾 \r 的文字，以及是不是在程式碼框裡（``` 或 ~~~，結尾要同一種字元、不少於開頭的個數）
+type Line = { start: number; text: string; fenced: boolean }
+function scanLines(text: string): Line[] {
+  const out: Line[] = []
+  let pos = 0
+  let fence: { ch: string; len: number } | undefined
+  for (const raw of text.split('\n')) {
+    const start = pos
+    pos += raw.length + 1
+    const bare = raw.replace(/\r$/, '')
+    const f = /^\s{0,3}(`{3,}|~{3,})(.*)$/.exec(bare)
+    const mark = f?.[1] ?? ''
+    const tail = f?.[2] ?? ''
+    if (fence) {
+      if (f && mark[0] === fence.ch && mark.length >= fence.len && !tail.trim()) fence = undefined
+      out.push({ start, text: bare, fenced: true })
+    } else if (f && !(mark[0] === '`' && tail.includes('`'))) {
+      fence = { ch: mark[0] ?? '`', len: mark.length }
+      out.push({ start, text: bare, fenced: true })
+    } else {
+      out.push({ start, text: bare, fenced: false })
+    }
+  }
+  return out
+}
+
+// 檔案開頭的 YAML front matter（--- … --- 或 --- … ...）結尾位置（不含換行）；沒有或沒收尾回 undefined
+function frontMatterEnd(lines: Line[]) {
+  if ((lines[0]?.text.replace(/^\ufeff/, '').trimEnd()) !== '---') return undefined
+  for (const l of lines.slice(1)) if (l.text.trimEnd() === '---' || l.text.trimEnd() === '...') return l.start + l.text.length
+  return undefined
+}
+
+// 找檔案裡的卡片：第一個「整行就是開頭標記」到它後面「整行就是結尾標記」（都不在程式碼框裡）。
+// 有開頭沒結尾回 'broken'（不碰），沒有開頭回 undefined
 export function findCard(text: string): FoundCard | 'broken' | undefined {
-  const m = OPEN_RE.exec(text)
-  if (!m) return undefined
-  const closeAt = text.indexOf(CARD_CLOSE, m.index + m[0].length)
-  if (closeAt === -1) return 'broken'
-  const end = closeAt + CARD_CLOSE.length
-  return { start: m.index, end, rev: Number(m[1]), text: text.slice(m.index, end) }
+  const lines = scanLines(text)
+  const at = lines.findIndex(l => !l.fenced && OPEN_LINE.test(l.text))
+  if (at === -1) return undefined
+  const open = lines[at] as Line
+  const rev = Number(OPEN_LINE.exec(open.text)?.[1])
+  const start = open.start + open.text.indexOf('<!--')
+  const close = lines.slice(at + 1).find(l => !l.fenced && l.text.trim() === CARD_CLOSE)
+  if (!close) return 'broken'
+  const end = close.start + close.text.indexOf(CARD_CLOSE) + CARD_CLOSE.length
+  return { start, end, rev, text: text.slice(start, end) }
 }
 
 // 卡片文字 → 欄位（手動改過也讀得回來；認不得的行略過）
@@ -118,18 +161,16 @@ export const eolOf = (text: string) => {
   return i > 0 && text[i - 1] === '\r' ? '\r\n' : '\n'
 }
 
-// 第一個 H1 行（# 開頭、不是 ##）的結尾位置（不含換行）；程式碼框裡的不算
-function h1End(text: string) {
-  let pos = 0
-  let fenced = false
-  for (const line of text.split('\n')) {
-    const bare = line.replace(/\r$/, '')
-    const lineStart = pos
-    pos += line.length + 1
-    if (/^\s{0,3}(```|~~~)/.test(bare)) { fenced = !fenced; continue }
-    if (!fenced && /^# \S/.test(bare.replace(/^\ufeff/, ''))) return lineStart + bare.length
+// 放卡片的位置（行尾，不含換行）：第一個 H1 行（# 開頭、不是 ##；程式碼框與 front matter 裡的不算）；
+// 沒有 H1 但有 front matter，放在 front matter 結尾的 --- 後面；都沒有回 undefined（放最上面）
+function anchorEnd(text: string) {
+  const lines = scanLines(text)
+  const fm = frontMatterEnd(lines)
+  for (const l of lines) {
+    if (fm !== undefined && l.start <= fm) continue
+    if (!l.fenced && /^# \S/.test(l.text.replace(/^\ufeff/, ''))) return l.start + l.text.length
   }
-  return undefined
+  return fm
 }
 
 export type Applied = { text: string } | { error: 'broken' }
@@ -142,7 +183,7 @@ export function applyCard(file: string, block: string): Applied {
   const found = findCard(file)
   if (found === 'broken') return { error: 'broken' }
   if (found) return { text: file.slice(0, found.start) + body + file.slice(found.end) }
-  const at = h1End(file)
+  const at = anchorEnd(file)
   if (at === undefined) {
     const start = hasBom(file) ? 1 : 0
     const rest = file.slice(start)
@@ -276,7 +317,7 @@ const goalOf = (handoff: string) => /^\s*HANDOFF\s*[:：]\s*(.+)$/im.exec(handof
 // 沒有模型時：從 handoff 摘要的段落直接填狀態、下一步、驗證，其餘沿用上一版
 export function cardFromHandoff(handoff: string, prev: CardFields): CardFields {
   const s = handoffSections(handoff)
-  const clean = (v: string | undefined, n: number) => (v && !looksSecret(v) && v !== NONE ? cut(v, n) : undefined)
+  const clean = (v: string | undefined, n: number) => (v && !looksSecret(v) && v !== NONE ? cut(defang(v), n) : undefined)
   const none = (v: string | undefined) => (v === undefined ? undefined : v === '無' || /^none\.?$/i.test(v) ? '' : v)
   return {
     ...prev,

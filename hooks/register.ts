@@ -14,7 +14,7 @@ import { NOTE_TAG, contextText, localStamp, memHead, noteBlock, parseNotes, rend
 import { encodeProject, isAbs, resolveDots, slash } from './paths'
 import { anchorOf, transcriptOf } from './transcript'
 import type { Row } from './transcript'
-import { CARD_EFFORT, CARD_GRACE_MS, CARD_MAX_TOKENS, CARD_TIMEOUT_MS, DISTILL_EFFORT, DISTILL_GRACE_MS, DISTILL_MAX_TOKENS, DISTILL_TIMEOUT_MS, GUARD_MAX_TOKENS, HANDOFF_TIMEOUT_MS, KEEP, DEFER_CAP_EXTRA, DEFER_CAP_RATIO, RELOAD_GRACE_MS, RETRY_MS, RETRY_TURNS, STOPPED, cfg, optionsOf, resetConfig, resolveConfig, settingSource, settingValue, specOf, stepSetting, thresholdOf } from './config'
+import { CMD_ASK_TIMEOUT_MS, CARD_EFFORT, CARD_GRACE_MS, CARD_MAX_TOKENS, CARD_TIMEOUT_MS, DISTILL_EFFORT, DISTILL_GRACE_MS, DISTILL_MAX_TOKENS, DISTILL_TIMEOUT_MS, GUARD_MAX_TOKENS, HANDOFF_TIMEOUT_MS, KEEP, DEFER_CAP_EXTRA, DEFER_CAP_RATIO, RELOAD_GRACE_MS, RETRY_MS, RETRY_TURNS, STOPPED, cfg, optionsOf, resetConfig, resolveConfig, settingSource, settingValue, specOf, stepSetting, thresholdOf } from './config'
 import { resetRuntime, rt } from './runtime'
 import { doneCheck, freshWork, noteCall, trackFailure } from './loops'
 import { clearNext, noteStep, peekNext, resolveReplyLang, takePending } from './lang'
@@ -857,54 +857,83 @@ const fieldsOf = (c: CardFields): CardFields => ({ status: c.status, running: c.
 const sameFields = (a: CardFields, b: CardFields) => JSON.stringify(fieldsOf(a)) === JSON.stringify(fieldsOf(b))
 const kTokens = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : String(n))
 
-// 檔案裡的卡片（沒有檔案、沒有標記、標記壞掉都回 undefined）
-async function fileCard($: EngineInterface) {
+// 檔案裡的卡片原文（沒有檔案、沒有標記、標記壞掉都回 undefined）
+async function fileCardRaw($: EngineInterface) {
   try {
     const file = await cardFilePath($)
     if (!(await $.fs.exists(file))) return undefined
     const found = findCard(await readText($, file))
-    return found && found !== 'broken' ? parseCard(found.text) : undefined
+    return found && found !== 'broken' ? found : undefined
   } catch {
     return undefined
   }
 }
-
-// 讀檔案文字並保留開頭的 BOM：用位元組讀再自己解碼（$.fs.read 的文字模式會不會吃掉 BOM 沒有驗證過）；用不了就退回文字模式
-async function readKeepBom($: EngineInterface, path: string) {
-  const g = globalThis as { atob?: (s: string) => string; TextDecoder?: new (label?: string) => { decode: (b: Uint8Array) => string } }
-  try {
-    const r = await $.fs.read(path, { as: 'bytes' })
-    if (typeof r === 'string') return r
-    if (g.atob && g.TextDecoder) {
-      const bin = g.atob(r.base64)
-      const bytes = new Uint8Array(bin.length)
-      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
-      // BOM 自己認自己補：不同執行環境的 TextDecoder 對 BOM 的處理不一樣（ignoreBOM 在測試環境實測沒有保留）
-      const bom = bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf
-      const body = new g.TextDecoder('utf-8').decode(bom ? bytes.subarray(3) : bytes)
-      return bom ? `\ufeff${body}` : body
-    }
-  } catch {}
-  return $.fs.read(path)
+// 檔案裡的卡片（解析過）
+async function fileCard($: EngineInterface) {
+  const raw = await fileCardRaw($)
+  return raw ? parseCard(raw.text) : undefined
 }
 
-type PutOutcome = { kind: 'written'; rev: number } | { kind: 'nofile' | 'broken' | 'backup' | 'conflict' | 'error' }
+// 讀檔案文字並保留開頭的 BOM：用位元組讀再自己解碼（$.fs.read 的文字模式會不會吃掉 BOM 沒有驗證過）。
+// 不是嚴格的 UTF-8 就回 undefined（cp950／Big5、UTF-16、有 NUL 或解不回原位元組的）：$.fs 只能寫文字，
+// 這種檔案寫回去會變成亂碼，備份也只能是文字，所以一律不寫。嚴格的 UTF-8 再編碼回去逐位元組相同，備份就是原檔的位元組複本。
+// 位元組模式用不了時退回文字模式，改看有沒有 U+FFFD 或 NUL
+async function readKeepBom($: EngineInterface, path: string): Promise<string | undefined> {
+  const g = globalThis as {
+    atob?: (s: string) => string
+    TextDecoder?: new (label?: string, opts?: { fatal?: boolean }) => { decode: (b: Uint8Array) => string }
+    TextEncoder?: new () => { encode: (s: string) => Uint8Array }
+  }
+  const sane = (t: string) => !t.includes('\ufffd') && !t.includes('\0')
+  let r: Awaited<ReturnType<EngineInterface['fs']['read']>> | undefined
+  try { r = await $.fs.read(path, { as: 'bytes' }) } catch {}
+  if (r !== undefined && typeof r !== 'string' && g.atob && g.TextDecoder) {
+    const bin = g.atob(r.base64)
+    const bytes = new Uint8Array(bin.length)
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+    // UTF-16 的 BOM
+    if (bytes.length >= 2 && ((bytes[0] === 0xff && bytes[1] === 0xfe) || (bytes[0] === 0xfe && bytes[1] === 0xff))) return undefined
+    // BOM 自己認自己補：不同執行環境的 TextDecoder 對 BOM 的處理不一樣（ignoreBOM 在測試環境實測沒有保留）
+    const bom = bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf
+    const body = bom ? bytes.subarray(3) : bytes
+    let text: string
+    try { text = new g.TextDecoder('utf-8', { fatal: true }).decode(body) } catch { return undefined }
+    if (!sane(text)) return undefined
+    if (g.TextEncoder) {
+      const again = new g.TextEncoder().encode(text)
+      if (again.length !== body.length || again.some((v, i) => v !== body[i])) return undefined
+    }
+    return bom ? `\ufeff${text}` : text
+  }
+  const text = typeof r === 'string' ? r : await $.fs.read(path)
+  return sane(text) ? text : undefined
+}
 
-// 把卡片寫進 _HANDOFF.md，絕不蓋掉使用者的修改：讀檔與修改時間 → 組新內容 → 第一次寫之前備份 →
+type PutOutcome = { kind: 'written'; rev: number } | { kind: 'nofile' | 'broken' | 'backup' | 'conflict' | 'encoding' | 'edited' | 'error' }
+
+// 把卡片寫進 _HANDOFF.md，絕不蓋掉使用者的修改：讀檔與修改時間 → 檔案不是 UTF-8 就不寫 → 卡片區域和組這次更新時讀到的不一樣
+// （模型呼叫期間使用者手改了卡片）就放棄 → 組新內容 → 備份（有史以來第一次一份 .first.bak 永不覆蓋，每個 session 第一次寫之前再一份 .bak）→
 // 寫之前再量一次修改時間與大小，變了就重讀重組（只重試一次），還是變了就放棄。標記以外的內容原樣保留
-async function putCard($: EngineInterface, file: string, fields: CardFields, sid: string, at: number, recRev: number): Promise<PutOutcome> {
+async function putCard($: EngineInterface, file: string, fields: CardFields, sid: string, at: number, recRev: number, expected: string | undefined): Promise<PutOutcome> {
   for (let attempt = 0; attempt < 2; attempt++) {
     if (!(await $.fs.exists(file))) return { kind: 'nofile' }
     const before = await $.fs.stat(file)
     const text = await readKeepBom($, file)
+    if (text === undefined) return { kind: 'encoding' }
     const found = findCard(text)
     if (found === 'broken') return { kind: 'broken' }
+    if ((found?.text) !== expected) return { kind: 'edited' }
     const rev = Math.max(found?.rev ?? 0, recRev) + 1
     const next = applyCard(text, renderCard(fields, { at, sid, rev }))
     if ('error' in next) return { kind: 'broken' }
+    const backupDir = `${file.slice(0, file.lastIndexOf('/'))}/.ctx-handoff-backup`
     const backed = `${sid}|${file}`
     if (!rt.cardBacked.has(backed)) {
-      try { await $.fs.write(`${file.slice(0, file.lastIndexOf('/'))}/.ctx-handoff-backup/${CARD_FILE}.bak`, text) } catch { return { kind: 'backup' } }
+      try {
+        const first = `${backupDir}/${CARD_FILE}.first.bak`
+        if (!(await $.fs.exists(first))) await $.fs.write(first, text)
+        await $.fs.write(`${backupDir}/${CARD_FILE}.bak`, text)
+      } catch { return { kind: 'backup' } }
       rt.cardBacked.add(backed)
     }
     const after = await $.fs.stat(file)
@@ -932,7 +961,8 @@ async function runCard($: EngineInterface, job: CardJob) {
   const file = await cardFilePath($)
   const rec = await loadCardRec($)
   const exists = await $.fs.exists(file)
-  const inFile = exists ? await fileCard($) : undefined
+  const raw = exists ? await fileCardRaw($) : undefined
+  const inFile = raw ? parseCard(raw.text) : undefined
   const prev: CardFields = inFile ?? (rec ? fieldsOf(rec) : emptyFields())
   const source = job.source.kind === 'handoff'
     ? { label: 'handoff 摘要', text: job.source.text }
@@ -968,7 +998,7 @@ async function runCard($: EngineInterface, job: CardJob) {
   const at = await $.clock.now()
   let rev = (rec?.rev ?? 0) + 1
   if (exists) {
-    const out = await putCard($, file, fields, job.sid, at, rec?.rev ?? 0).catch((err): PutOutcome => {
+    const out = await putCard($, file, fields, job.sid, at, rec?.rev ?? 0, raw?.text).catch((err): PutOutcome => {
       $.ui.toast(t().card.writeFailedToast(String(err)))
       return { kind: 'error' }
     })
@@ -979,10 +1009,15 @@ async function runCard($: EngineInterface, job: CardJob) {
     } else if (out.kind === 'nofile') {
       $.ui.log(t().card.storedLog(rev))
     } else if (out.kind !== 'error') {
-      // 寫不進去：toast 說原因（同一個原因只說一次，免得每次更新都跳），紀錄每次都留
-      const text = out.kind === 'conflict' ? t().card.conflictToast(file) : out.kind === 'broken' ? t().card.brokenToast(file) : t().card.backupFailedToast(file)
+      // 寫不進去：toast 說原因（同一個原因只說一次，免得每次更新都跳；不是 UTF-8 的每個 session 一次），紀錄每次都留
+      const m = t().card
+      const text = out.kind === 'conflict' ? m.conflictToast(file) : out.kind === 'broken' ? m.brokenToast(file)
+        : out.kind === 'encoding' ? m.encodingToast(file) : out.kind === 'edited' ? m.editedToast(file) : m.backupFailedToast(file)
       $.ui.log(text)
-      if (!rt.cardWarned.has(out.kind)) { rt.cardWarned.add(out.kind); $.ui.toast(text) }
+      const key = out.kind === 'encoding' ? `encoding|${job.sid}` : out.kind
+      if (!rt.cardWarned.has(key)) { rt.cardWarned.add(key); $.ui.toast(text) }
+      // 使用者手改了卡片：這次更新作廢，store 也不動（下次更新從檔案裡現在的卡片接著來）
+      if (out.kind === 'edited') return
     }
   } else {
     $.ui.log(t().card.storedLog(rev))
@@ -1067,6 +1102,8 @@ async function noScreen($: EngineInterface) {
   try { return (await $.session.surfaces()).length === 0 } catch { return true }
 }
 
+const ASK_TIMED_OUT = '__ctx-handoff-ask-timeout__' as const
+
 // 不可逆指令：有畫面就問「允許／拒絕」，拒絕或關掉對話框就擋下；沒有畫面照常執行並記一行。
 // 回傳要擋下的理由；這個函式自己出錯時放行
 async function commandGate($: EngineInterface, e: { tool: string }): Promise<string | undefined> {
@@ -1082,11 +1119,20 @@ async function commandGate($: EngineInterface, e: { tool: string }): Promise<str
       $.ui.log(m.headlessLog(e.tool, hit.label, shown))
       return undefined
     }
-    let answer: string | undefined
-    try {
-      answer = await $.ui.ask(m.question(e.tool, hit.label, shown), { options: [m.allow, m.deny], header: m.header })
-    } catch {
+    // 排程、/loop 觸發的回合沒有人看，問了只會卡住：直接拒絕
+    if (rt.promptKind === 'scheduled-trigger') {
+      $.ui.log(m.timeoutLog(e.tool, hit.label, m.whyScheduled))
+      return m.timeout
+    }
+    // $.ui.ask 自己沒有時限：和計時器賽跑，逾時當作拒絕（對話框會留在畫面上，沒辦法收掉）
+    const asked = $.ui.ask(m.question(e.tool, hit.label, shown), { options: [m.allow, m.deny], header: m.header })
       // 關掉對話框（或這時剛好沒有畫面）：視同拒絕
+      .catch(() => undefined)
+    const answer = await within<string | undefined, typeof ASK_TIMED_OUT>($, asked, CMD_ASK_TIMEOUT_MS, ASK_TIMED_OUT)
+    if (answer === ASK_TIMED_OUT) {
+      $.ui.log(m.timeoutLog(e.tool, hit.label, m.whyTimeout))
+      $.ui.toast(m.deniedToast(e.tool, hit.label))
+      return m.timeout
     }
     if (answer === m.allow) {
       $.ui.log(m.allowedLog(e.tool, hit.label, shown))
@@ -1390,6 +1436,8 @@ export const register: Register = on => {
   })
 
   on('prompt.submit', async ($, e, next) => {
+    // 最近一次送進對話的來源：排程觸發（scheduled-trigger）的回合，不可逆指令不問人、直接拒絕
+    rt.promptKind = e.origin.kind
     const isHuman = e.origin.kind === 'composer' || e.origin.kind === 'bridge'
     if (!isHuman) return next(e)
     await initLang($)
