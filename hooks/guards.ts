@@ -1,7 +1,6 @@
 // 守門：把反覆被提醒的規則變成工具呼叫前的比對。型別、提示、模型提案的驗證與比對（純函式，不碰 $）
 import { t } from './i18n'
 import { ACTIONS_END, ACTIONS_START } from './distill'
-import { inProject } from './notes'
 import type { Rule } from './notes'
 import { clip } from './transcript'
 
@@ -22,8 +21,6 @@ export type Guard = {
   bad?: string; good?: string
   // 提案時試比對這段對話已跑過的工具呼叫：命中幾次、總共幾次
   replay?: { hits: number; calls: number }
-  // 放進專案：「已在 <位置>」（個人這份停用）或「不放」
-  project?: string
 }
 
 // 比對對象：工具參數裡的字串值（Bash 就是 command），其他值轉成 JSON，以換行串起來
@@ -121,7 +118,7 @@ export function parseGuards(text: string, names: Set<string>) {
 // ---------- 守門的資料變換與列表文字（register.ts 負責讀寫 store） ----------
 // 出現 GUARD_MIN_COUNT 次以上、還沒有守門（任何狀態）的規則
 export const guardCandidatesOf = (rules: Rule[], guards: Guard[]) =>
-  rules.filter(r => r.count >= GUARD_MIN_COUNT && !inProject(r) && !guards.some(g => g.rule === r.name))
+  rules.filter(r => r.count >= GUARD_MIN_COUNT && !guards.some(g => g.rule === r.name))
 
 // 模型提的草稿加上編號、狀態與試比對（這段對話已跑過的工具呼叫命中幾次）
 export function withProposals(out: ReturnType<typeof parseGuards>['out'], guards: Guard[], calls: { tool: string; input: Record<string, unknown> }[], at: number) {

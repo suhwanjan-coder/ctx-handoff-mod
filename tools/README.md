@@ -11,4 +11,4 @@
 
 | `docs.mjs check|release <版本>` | `check`：英文正本與繁中版（`X.md` ↔ `X.zh-TW.md`）的章節、清單、表格、圖片、程式碼區塊、連結與行內程式碼要對上；`release`：從兩份 CHANGELOG 產生 GitHub Release 內文（英文在前、繁中在後、附比較連結）。不依賴本 repo，可以整個檔案複製到別的專案 | 雙語文件改了一邊忘了另一邊、Release 只有英文（2026-10-08 決定所有對外文件雙語） | `check` 的 `✗` 行；`release` 說找不到版本 |
 
-`lib.mjs` 是共用的經驗檔解析（和 `hooks/notes.ts` 的 `parseNotes` 同規則），`notes.test.mjs` 是 `notes.mjs` 的固定測試。
+`lib.mjs` 是共用的經驗檔解析（和 `hooks/notes.ts` 的 `parseNotes` 同規則），`notes.test.mjs` 是 `notes.mjs` 的固定測試。`manifest.test.mjs` 對照 `.claude-plugin/plugin.json` 的 `userConfig` 與 `hooks/config.ts` 的 `SETTINGS`（鍵、型別、預設值、範圍、選項），並確認版本在兩份 CHANGELOG 都有；測試檔不能 import `node:fs`，所以這項檢查不放在 `hooks/`。

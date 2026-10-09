@@ -10,7 +10,7 @@ const INJECT_RULES = 15
 export const EVIDENCE_KEEP = 3
 export const NOTE_TAG = '[ctx-handoff 專案經驗]'
 export type Rule = { name: string; count: number; body: string[] }
-// 流程：重複做過的多步驟固定做法。存法和規則同形（標題行＋body 行），欄位是 body 裡的「- 時機：」、「- 步驟：」＋縮排編號行、「- 根據：」、「- 專案：」
+// 流程：重複做過的多步驟固定做法。存法和規則同形（標題行＋body 行），欄位是 body 裡的「- 時機：」、「- 步驟：」＋縮排編號行、「- 根據：」
 export type Procedure = Rule
 export type Memory = { type: string; title: string; how?: string; why?: string; evidence: string[] }
 // extra：不認得的 `## ` 區段（含標題行）原樣保留，輸出在規則與流程之後
@@ -44,16 +44,6 @@ export const procBody = (when: string, steps: string[], rest: string[]) =>
   [`${WHEN_PREFIX}${when}`, STEPS_PREFIX, ...steps.map((s, i) => `  ${i + 1}. ${s}`), ...rest]
 
 export const procOneLine = (p: Procedure) => `時機：${procWhen(p)}｜步驟：${procSteps(p).join(' → ')}`
-
-// 規則與流程的專案狀態：「- 專案：已在 <位置>」放進 repo 了（不再帶入，repo 的才是正本）；「- 專案：不放」使用者不要放進 repo
-const PROJECT_PREFIX = '- 專案：'
-export const PROJECT_IN = '已在 '
-export const PROJECT_DECLINED = '不放'
-export const projectOf = (r: Rule | Procedure) => r.body.find(l => l.startsWith(PROJECT_PREFIX))?.slice(PROJECT_PREFIX.length).trim()
-export const inProject = (r: Rule | Procedure) => projectOf(r)?.startsWith(PROJECT_IN) === true
-export function setProject(r: Rule | Procedure, value: string) {
-  r.body = [...r.body.filter(l => !l.startsWith(PROJECT_PREFIX)), `${PROJECT_PREFIX}${value}`]
-}
 
 // 本地時間的「YYYY-MM-DD HH:mm」
 export function localStamp(ms: number) {
@@ -154,7 +144,7 @@ export const memoryTiers = (notes: Notes, day: string) => {
 
 // 帶入新對話開頭的內容；沒有東西就不帶。根據只給整理模型判斷用，不帶入
 export function contextText(notes: Notes, file: string, day: string) {
-  const rules = notes.rules.filter(r => r.count >= INJECT_MIN_COUNT && !inProject(r))
+  const rules = notes.rules.filter(r => r.count >= INJECT_MIN_COUNT)
     .sort((a, b) => b.count - a.count).slice(0, INJECT_RULES)
   const full = notes.memory.filter(m => !FACT_TYPES.includes(m.type))
   const titles = notes.memory.filter(m => FACT_TYPES.includes(m.type) && !isArchived(m, day))

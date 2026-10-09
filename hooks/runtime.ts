@@ -5,6 +5,7 @@ import { freshWork } from './loops'
 import type { Streak, Work } from './loops'
 import { freshReply } from './lang'
 import type { ReplyLang, ReplyState } from './lang'
+import type { Digest } from './digest'
 
 export const rt = {
   idle: undefined as Timer | undefined,
@@ -32,8 +33,6 @@ export const rt = {
   distilling: false,
   // 上一次整理有沒有失敗（有回答但沒套用也算），給 /handoff distill 判斷
   distillFailed: false,
-  // 放進專案的工具完整名稱（mcp__<plugin>__<name>），以註冊結果為準；這個 process 沒註冊就是 undefined
-  promoteTool: undefined as string | undefined,
   // 守門的 store 鍵：工作區在 process 內不變，算一次就記住（熱重載會重算）
   guardsKeyCache: undefined as string | undefined,
   // 設定與介面語言：第一次用到時讀一次就記住（熱重載會重算）
@@ -46,6 +45,21 @@ export const rt = {
   reply: freshReply() as ReplyState,
   // 已經用 handoff 交接出去的 session（熱重載會清掉）：它的進度備忘不再提供，之後才寫完的整理也不存
   handed: new Set<string>(),
+  // 狀態卡：更新排成一串（同時只有一個在讀寫檔）；這個 process 已備份過 _HANDOFF.md 的 session；
+  // 已經用 handoff 更新過卡片的 session（之後才跑完的進度備忘不再蓋過它）。熱重載會清掉
+  cardChain: Promise.resolve() as Promise<void>,
+  cardBacked: new Set<string>(),
+  cardFromHandoff: new Set<string>(),
+  // 寫不進 _HANDOFF.md 的原因（衝突、標記壞掉、備份失敗）已經跳過 toast 的：同一個原因不重複跳，寫成功一次就清掉
+  cardWarned: new Set<string>(),
+  // 這個 process 看到的對話檔路徑（classic.Stop 帶的 transcript_path，確認是這個 session 的才用）
+  transcript: undefined as { sid: string; path: string } | undefined,
+  // 對話檔尾端摘要的快取：路徑、修改時間與大小都沒變就不重讀
+  digestCache: undefined as { path: string; mtimeMs: number; size: number; digest: Digest } | undefined,
+  // session.start 的 isInteractive：false（claude -p、SDK）沒有畫面可以問，不可逆指令確認直接放行
+  interactive: undefined as boolean | undefined,
+  // 最近一次壓縮前後的 token 數（after 可能沒有）；stops 是壓縮後已經判斷過幾次 Stop
+  compact: undefined as { before: number | undefined; after: number | undefined; stops: number } | undefined,
 }
 
 // 重設程序內狀態（模組重新載入或測試重跑時）；distilling、distillFailed、presentStartedAt 沿用原本不重設的行為
@@ -65,7 +79,6 @@ export function resetRuntime() {
   rt.deferral = undefined
   rt.deferToasted = false
   rt.seenKnown.clear()
-  rt.promoteTool = undefined
   rt.guardsKeyCache = undefined
   rt.langReady = undefined
   rt.streaks.clear()
@@ -73,4 +86,12 @@ export function resetRuntime() {
   rt.replyTarget = undefined
   rt.reply = freshReply()
   rt.handed.clear()
+  rt.cardChain = Promise.resolve()
+  rt.cardBacked.clear()
+  rt.cardFromHandoff.clear()
+  rt.cardWarned.clear()
+  rt.transcript = undefined
+  rt.digestCache = undefined
+  rt.interactive = undefined
+  rt.compact = undefined
 }

@@ -24,21 +24,51 @@ After about 55 idle minutes it sends a tiny request so the conversation cache do
 
 <img src="distill-demo.gif" width="300" alt="Demo: the user repeats the same instruction three times and a new conversation forgets it; ctx-handoff turns it into a rule, and the next conversation remembers. Text in Traditional Chinese.">
 
-What you correct or explain is collected into one notes file per project, loaded into each new conversation. It's plain Markdown you can edit: `~/.claude/projects/<project path>/memory/ctx-handoff.md`.
+What you correct or explain is collected into one notes file per project. It's plain Markdown you can edit: `~/.claude/projects/<project path>/memory/ctx-handoff.md`. **By default the notes are not put into your conversations**: they stay in the file and the panel, and the background update still runs (guards and the progress note depend on it). Turn on `inject_notes` to have them loaded as described below.
 
-- **Memories:** preferences, corrections, facts and locations. Preferences and corrections load in full, and only when they match something you actually said. Facts and locations load as titles; Claude reads the rest when it needs it. Facts unconfirmed for 30 days are archived (not loaded, not deleted).
-- **Rules:** practices that keep coming up, such as "use forward slashes in Bash paths (3 times)". Loaded once seen twice.
-- **Procedures:** multi-step routines you had Claude repeat, such as "release: bump the version → changelog → tag → GitHub release". Not loaded, to keep the context small.
+- **Memories:** preferences, corrections, facts and locations. With `inject_notes` on, preferences and corrections load in full, and only when they match something you actually said; facts and locations load as titles. Facts unconfirmed for 30 days are archived (not loaded, not deleted).
+- **Rules:** practices that keep coming up, such as "use forward slashes in Bash paths (3 times)". With `inject_notes` on, loaded once seen twice.
+- **Procedures:** multi-step routines you had Claude repeat, such as "release: bump the version → changelog → tag → GitHub release". Never loaded; they stay in the notes file.
 
 The notes update every 30 of your messages, after 55 idle minutes, before a handoff, or on `/handoff distill`. Only the new part of the conversation is sent, to Sonnet 5.5 at low effort; a short update takes about 1,200 tokens. Conversations under 30k tokens are skipped. Anything that looks like a key or password is dropped. The status line counts down ("18 more messages until notes update").
 
-**Into your repo after 3 times.** When a rule has come up 3 times (or a guard is on), the next conversation in a git repo asks Claude, after it finishes what you asked, to put it where your project keeps its rules: CLAUDE.md, AGENTS.md or an existing hook. A procedure that came up 3 times becomes a project skill, `.claude/skills/<name>/SKILL.md`. Claude checks for duplicates, doesn't commit, and tells you in one line what it added and where, so it shows up in your usual diff. From then on the repo holds it, for every machine and tool, and ctx-handoff stops loading its own copy. Say no and it's undone and not asked again.
+ctx-handoff never writes `CLAUDE.md`, `AGENTS.md` or skill files in your project: your own rules live where you keep them, and this mod only reads and writes its own notes file.
 
 ### Where you left off
 
 If you `/clear` yourself, Claude Code crashes, or you just open a new conversation, the new one doesn't know where the last one stopped. Each notes update therefore also keeps a short progress note for the folder: the task, whether it's done, in progress or blocked, the last check that passed, the next step and up to 5 key files. It rides in the same request as the notes.
 
-The next conversation in that folder is told about it once, within 24 hours: "the last conversation (2 hours ago) stopped at…". If you carry on, Claude starts from there; if you're doing something else, it ignores it. Conversations that were handed off automatically don't get it, since the summary already covers them.
+The next conversation in that folder is told about it once, within 24 hours: "the last conversation (2 hours ago) stopped at…". If you carry on, Claude starts from there; if you're doing something else, it ignores it. Conversations that were handed off automatically don't get it, since the summary already covers them. When the project has a status card (next section), the conversation is told the card's state and next step instead, so a line you fixed by hand in `_HANDOFF.md` is what it hears.
+
+### Status card in `_HANDOFF.md`
+
+After every handoff (automatic, `/handoff now`, or the one saved while you're away), and whenever a background notes update has a progress note, ctx-handoff rewrites one block in the `_HANDOFF.md` at the root of your project: the folder you started in, or the main worktree when you started from a git worktree. The block holds the update time (Taipei time), the session and revision, the state, what's running, what waits for you, the next step, the last check, what didn't work (up to 5) and decisions (up to 5).
+
+- Only the text between `<!-- ctx-handoff:card rev=N -->` and `<!-- /ctx-handoff:card -->` is replaced. The first time, the block goes right after the first `# ` heading, or at the top when there is none. Your text, its line endings (CRLF or LF) and its BOM stay exactly as they were.
+- Right before writing, the file's modification time and size are checked again. If you saved in between, it reads the file once more and tries again; if it changed again, it gives up with a notice and never overwrites.
+- The file is copied to `.ctx-handoff-backup/_HANDOFF.md.bak` before the first write of each session.
+- With no `_HANDOFF.md`, nothing is created. The card is kept inside ctx-handoff and `/handoff` says so; `/handoff card init` creates the file with a `# 交接` heading and the card.
+
+The card text comes from one low-effort request (`card_model`, by default the notes model) whose input is the previous card, the session digest and the handoff summary or progress note, not the whole conversation. If that fails, the state and next step are filled straight from the summary. Setting: `card`.
+
+### Session digest and cache TTL
+
+`/handoff` shows a digest of this session in four lines: current work, last activity time, the last 3 tool calls and the last reply. It's built from the last 64 KB of the conversation file, read with `tail` (or PowerShell on Windows) when the file is over 4 MiB, and cached until the file changes. The status card update gets the same digest.
+
+The same tail shows which cache lifetime the session writes, 1 hour or 5 minutes. A session that writes only the 5-minute cache can't be kept warm for 55 minutes, so the keep-warm request is skipped and an away summary is saved instead; `/handoff` shows the detected lifetime and says so. When the tail doesn't show it, keep-warm works as before.
+
+### Compaction
+
+When the conversation is compacted (`/compact` or automatically), a notice shows the size before and after ("Compacted 214k → 31k") and the idle timer starts over. The next stops don't act on a context reading that is still the old, pre-compaction one, at most 3 times, so an automatic handoff never fires from a stale number.
+
+### Irreversible commands
+
+Before Bash or PowerShell runs a command that can't be undone, you get an Allow or Deny question. Deny, or closing the question, stops the command and tells Claude. Guards you approved are checked first.
+
+- Asked about: `rm -r` and `rm -rf`, `Remove-Item -Recurse`, `rmdir /s`, `del /s`, `git push --force`, `-f` and `--force-with-lease`, `git reset --hard`, `git clean -f`, `git branch -D`, `git checkout -- .`, `git restore .`, `DROP TABLE` and `DROP DATABASE`, `TRUNCATE TABLE`, `npm publish`, `pnpm publish` and `format D:`. Commands inside `bash -c`, `sh -c`, `sudo`, `xargs`, `powershell -Command`, `cmd /c` and PowerShell's `-EncodedCommand` are checked too.
+- Not asked about: `rm file.txt`, `git push`, `grep -rf`, `git clean -n`, `git restore --staged .` and `npm publish --dry-run`. A command shown as text, such as `echo "rm -rf /"`, is asked about once: quoted text is scanned too, so a command hidden inside quotes can't slip through.
+
+With no screen to ask on (`claude -p`, the SDK, or no surface attached), the command runs as before and a line is logged, so scheduled tasks keep working. Setting: `command_guard`.
 
 ### Nudges
 
@@ -67,15 +97,19 @@ Everything is set on the panel's Settings tab, not in `/config`. Numbers step wi
 | `threshold` | `600000` | Context tokens that trigger a handoff |
 | `window_ratio` | `0.8` | On smaller windows, hand off at `window × ratio` |
 | Keep cache warm | on | Also `/handoff refresh on\|off` |
-| `idle_minutes` | `55` | Idle minutes before each keep-warm request (5–59) |
+| `idle_minutes` | `55` | Idle minutes before each keep-warm request (5–59); skipped on a 5-minute cache |
 | `max_refresh` | `3` | Keep-warm requests per idle period before saving a summary instead |
 | Project notes | on | Also `/handoff distill on\|off` |
 | `distill_every` | `30` | Your messages between notes updates (5–200) |
 | `min_tokens` | `30000` | Smaller conversations skip cache keeping, away summaries and notes |
 | `notes_model` | `claude-sonnet-5-5` | Model for notes: Sonnet 5.5 or Opus 5.5 |
+| `inject_notes` | off | Put the notes file's contents into new conversations and your next message |
+| `card` | on | Keep the status card in `_HANDOFF.md` |
+| `card_model` | empty | Model for the status card; empty means the same as `notes_model` |
 | `resume_hint` | on | Tell a new conversation where the last one stopped |
 | `retry_nudge` | on | Repeated failure nudge |
 | `done_check` | on | "Done" without checking nudge |
+| `command_guard` | on | Ask before irreversible Bash and PowerShell commands |
 | `reply_language` | `auto` | Reply language nudge: `auto`, `off`, `zh-TW`, `zh-CN`, `en` or `ja` |
 | `language` | `auto` | Language of the status line, notices and panel: `auto`, `en` or `zh-TW` |
 
@@ -95,7 +129,7 @@ You won't need these in normal use. If `/handoff` is taken by your own command o
 
 | Command | Purpose |
 |---|---|
-| `/handoff` | Context use, what's on, the latest progress note and recent errors |
+| `/handoff` | Context use, what's on, the latest progress note, the session digest, the cache TTL, the status card and recent errors |
 | `/handoff panel` | Open or close the panel |
 | `/handoff now` | Hand off now (clears the conversation) |
 | `/handoff dry` | Show a handoff summary and its cost, without clearing |
@@ -103,6 +137,7 @@ You won't need these in normal use. If `/handoff` is taken by your own command o
 | `/handoff resume` / `continue` | After being away: start fresh from the summary, or stay |
 | `/handoff resend` | Send the handoff summary again if it didn't arrive |
 | `/handoff refresh on\|off`, `distill on\|off` | Turn cache keeping or project notes on or off |
+| `/handoff card` | Show where the status card is and what it says; `card init` creates `_HANDOFF.md` |
 | `/handoff guard` | List guards; `suggest` drafts new ones, `on\|off\|drop N` approves, turns off or deletes one, `mode N deny\|remind` switches between blocking and reminding |
 
 ## Cost, privacy and permissions
@@ -112,6 +147,7 @@ You won't need these in normal use. If `/handoff` is taken by your own command o
 - Handoff: one request that reads the conversation (mostly from cache) and writes the summary, about 30 seconds at 800k tokens.
 - Keeping the cache warm: a tiny request that reads the conversation from cache, at about a tenth of the normal input price; at most 3 per idle period.
 - Notes: only the new part of the conversation, to Sonnet 5.5 at low effort. The progress note rides in the same request.
+- Status card: one small low-effort request after each handoff and after each notes update that has a progress note. It sends the previous card, the four-line digest and the summary or progress note, not the conversation.
 - The nudges make no requests.
 
 **What leaves your machine.** Nothing goes anywhere but Anthropic, through Claude Code, like the conversation itself. A notes update sends your messages, Claude's replies and tool calls (the first 300 characters of each input and 500 of each result), up to 300,000 characters.
@@ -122,24 +158,28 @@ You won't need these in normal use. If `/handoff` is taken by your own command o
 |---|---|
 | Project notes | `~/.claude/projects/<project path>/memory/ctx-handoff.md` |
 | Backups made before deleting from the panel | `.ctx-handoff-backup/` next to the notes file |
-| Settings set on the panel, recent handoff summaries, progress notes, errors | `~/.claude/plugins/store/ctx-handoff_*.json` |
+| The status card | `_HANDOFF.md` at the project root, between its markers only |
+| A copy of `_HANDOFF.md` before a session's first card write | `.ctx-handoff-backup/_HANDOFF.md.bak` at the project root |
+| Settings set on the panel, recent handoff summaries, progress notes, a copy of the status card, errors | `~/.claude/plugins/store/ctx-handoff_*.json` |
 
 **What it's allowed to do.** Mods aren't sandboxed; this one runs with your permissions. To see what it uses without running it, run `claude plugin validate <ctx-handoff folder>`. It prints a `hooks:` line (events it receives) and a `calls:` line (what its code calls):
 
 | In the output | Why |
 |---|---|
-| `tool.call` | Applies guards you approved; notices repeated failures and whether tests ran after edits; carries the reply language nudge |
+| `tool.call` | Applies guards you approved; asks before irreversible commands; notices repeated failures and whether tests ran after edits; carries the reply language nudge |
 | `turn.step` | Reads the visible text of Claude's replies in the main conversation to check their language. It doesn't change the request, the model or the reply |
 | `prompt.submit`, `prompt.context` | Holds your message during a handoff; loads notes and the progress note into a new conversation; rereads settings |
 | `$.session.messages`, `$.model.complete`, `$.model.fork` | Reads the conversation to write notes and handoff summaries |
-| `$.fs.read`, `$.fs.write`, `$.fs.exists` | Reads and writes the notes file and its backups; checks whether the project is a git repo |
+| `$.fs.read`, `$.fs.write`, `$.fs.exists`, `$.fs.stat` | Reads and writes the notes file, `_HANDOFF.md` (between its markers only) and their backups; checks a file's size and modification time before writing and before reading the conversation file's end; checks whether the project is a git repo |
+| `$.process.run` | Reads the end of a conversation file over 4 MiB, with `tail` or PowerShell. It runs nothing else |
+| `$.ui.ask`, `$.session.surfaces` | Asks Allow or Deny before an irreversible command; checks whether anything can show the question |
+| `session.compact` | Notices compaction: a notice, a fresh idle timer, and skipping a stale context reading |
 | `$.prompt.submit`, `$.command.run` | Sends the summary into the new conversation; runs `/clear` |
 | `$.env.get` | Reads three environment variables, `CLAUDE_CONFIG_DIR`, `HOME` and `USERPROFILE`, only to find your `~/.claude` folder. Nothing needs to be set |
-| `$.tool.register` | Gives Claude one tool, `mark_in_project`, to report where it put a rule or procedure in your repo |
 | `$.settings.read`, `config.set` | Reads Claude Code's `language` setting and this plugin's `pluginConfigs`; notices when you change Claude Code's settings |
 | The rest: `session.start`, `turn.complete`, `classic.Stop`, `command.run`, `$.command.register`, `ui.render`, `$.store`, `$.state`, `$.clock`, `$.ui`, `$.agent.list`, `$.session.*` | Bookkeeping: timers, the `/handoff` command, status line, panel and notices, its own storage, checking that Claude and its subagents are done before a handoff, and the "done" nudge |
 
-It makes no network requests of its own and starts no programs (no `$.http` or `$.process` calls). To run a session without any mod, start Claude Code with `claude --safe-mode`. See also [`SECURITY.md`](../SECURITY.md).
+It makes no network requests of its own (no `$.http` calls). The only programs it can start are `tail` and PowerShell, to read the end of a large conversation file. To run a session without any mod, start Claude Code with `claude --safe-mode`. See also [`SECURITY.md`](../SECURITY.md).
 
 ## Where it works
 
@@ -155,7 +195,8 @@ Mods load in most places Claude Code runs, but only the terminal and the Desktop
 
 ## Limitations
 
-- **On a 5-minute cache, turn cache keeping off.** API key, Bedrock and Vertex users, and subscribers who've moved onto usage credits, get a 5-minute cache, so a refresh at 55 minutes rewrites the whole cache. Run `/handoff refresh off`; this isn't detected automatically.
+- **A 5-minute cache is detected, not guaranteed.** API key, Bedrock and Vertex users, and subscribers who've moved onto usage credits, get a 5-minute cache. ctx-handoff reads which one a session writes from the end of its conversation file and skips keep-warm requests that can't help. When it can't tell (a new session, a file it can't read), it keeps warm as before, so run `/handoff refresh off` if you know your cache is short.
+- **The status card is rewritten, not merged.** Keep your own notes outside the markers. Edits inside them are the starting point of the next update, but a later update may rewrite them.
 - **Notes follow the folder you start in.** Work on another project from your home folder is noted under your home folder. Notes aren't shared across projects.
 - **The progress note is only as fresh as the last notes update.** After a short chat or a crash it may be missing or a few messages behind; run `/handoff distill` before `/clear` if you want it exact. Two conversations open in the same folder see each other's note.
 - **Other sessions pick up a settings change on their next message,** not at once.

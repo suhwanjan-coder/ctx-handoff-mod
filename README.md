@@ -32,9 +32,10 @@ Long Claude Code sessions run into the same chores again and again. ctx-handoff 
 |---|---|---|
 | the conversation is nearly full | You write a summary, `/clear`, paste it back | A summary is written, the conversation is cleared, and a fresh one continues |
 | you step away for an hour | Your next message rereads everything at full price | The cache is kept warm for up to about 4 hours |
-| you repeat an instruction | The next conversation forgets it | It becomes a project note, and after 3 times a line in your repo |
-| you `/clear` or reopen Claude Code | The new conversation starts blind | It's told where the last one stopped |
+| you repeat an instruction | The next conversation forgets it | It becomes a project note you can read and edit |
+| you `/clear` or reopen Claude Code | The new conversation starts blind | It's told where the last one stopped, from a status card in `_HANDOFF.md` |
 | Claude retries a failing command, or says "done" untested | You find out later | Claude gets a one-line nudge right away |
+| Claude is about to run `rm -rf` or `git push --force` | You find out afterwards | You're asked first |
 
 ## Install
 
@@ -55,7 +56,7 @@ Cache refresh on, refreshed 0/3 this idle period, timer not started
 That's it. Update with `claude plugin update ctx-handoff@ctx-handoff-mod`, or turn on auto-update under **Marketplaces** in `/plugin`.
 
 > [!NOTE]
-> Built for Claude subscriptions and long sessions (for example on a 1M-context model). On an API key, Bedrock or Vertex the cache lasts only 5 minutes, so run `/handoff refresh off`; everything else works. ctx-handoff is experimental, because Claude Code mods are still in early access.
+> Built for Claude subscriptions and long sessions (for example on a 1M-context model). On an API key, Bedrock or Vertex the cache lasts only 5 minutes; ctx-handoff reads that from the conversation file and skips the keep-warm requests that couldn't help. ctx-handoff is experimental, because Claude Code mods are still in early access.
 
 ## What's inside
 
@@ -69,19 +70,25 @@ At 600k tokens it waits for Claude and its subagents to finish, writes a summary
 
 <img src="docs/assets/cache.svg" width="900" alt="Animation: after you leave, the cache is refreshed at 55, 110 and 165 minutes; after that a summary is saved, and when you return you choose to resume or continue">
 
-### Learns your project, then hands it to your repo
+### Learns your project
 
-<img src="docs/assets/memory.svg" width="900" alt="Animation: the same instruction on three days becomes a project rule, then a line in CLAUDE.md for you to review">
-
-Preferences, corrections and facts become one Markdown notes file per project, loaded into every new conversation. Routines you repeat become project skills. Only the new part of the conversation is read, by Sonnet 5.5 at low effort.
+Preferences, corrections and facts become one Markdown notes file per project, kept under `~/.claude/projects/` for you to read and edit. They stay out of your conversations unless you turn on `inject_notes`. Routines you repeat are noted as procedures. Only the new part of the conversation is read, by Sonnet 5.5 at low effort. ctx-handoff never writes `CLAUDE.md`, `AGENTS.md` or skill files in your project.
 
 ### Remembers where you stopped
 
 <img src="docs/assets/resume.svg" width="900" alt="Animation: after /clear, the next conversation is told the last task, its state and the next step">
 
+### Keeps a status card in `_HANDOFF.md`
+
+After each handoff, and whenever the background update has progress, the block between `<!-- ctx-handoff:card rev=N -->` and `<!-- /ctx-handoff:card -->` in your project's `_HANDOFF.md` is rewritten: state, what's running, what waits for you, the next step, the last check, what didn't work and what was decided. Everything outside the markers is left byte for byte as you wrote it, and the file is backed up before the first write of each session. No `_HANDOFF.md`? Nothing is created until you run `/handoff card init`.
+
 ### Catches the usual slips
 
 <img src="docs/assets/nudges.svg" width="900" alt="Animation: nudges for the same failure twice, for saying done without checking, and for drifting out of your language">
+
+### Asks before commands you can't undo
+
+When Bash or PowerShell is about to run `rm -rf`, `git push --force`, `git reset --hard`, `DROP TABLE`, `npm publish` or the like, you get an Allow or Deny question first. Denying, or closing the question, stops the command. In `claude -p`, where there is no screen to ask on, the command runs as before and a line is logged. Setting: `command_guard`.
 
 ### Guards you approve, one panel for everything
 
@@ -97,7 +104,7 @@ Everything is on the panel's Settings tab (`/handoff panel`, then <kbd>5</kbd>),
 
 - **No servers of its own.** It runs on your Claude Code sign-in and sends nothing anywhere but Anthropic, like the conversation itself.
 - **Small, predictable costs.** A handoff is one request; a cache refresh reads from cache at about a tenth of the input price; a notes update sends only the new part of the conversation. The nudges cost nothing.
-- **Plain files you own.** Notes are Markdown in `~/.claude/projects/`. Check what the mod may do with `claude plugin validate`; the [guide](docs/guide.md#cost-privacy-and-permissions) explains every entry.
+- **Plain files you own.** Notes are Markdown in `~/.claude/projects/`; the status card lives in your own `_HANDOFF.md`, between its markers only. Check what the mod may do with `claude plugin validate`; the [guide](docs/guide.md#cost-privacy-and-permissions) explains every entry.
 
 ## Documentation
 
@@ -105,6 +112,10 @@ Everything is on the panel's Settings tab (`/handoff panel`, then <kbd>5</kbd>),
 - [Changelog](CHANGELOG.md): what changed in each version and why it's worth upgrading.
 - [Contributing](CONTRIBUTING.md): how to run it from source and send changes. Bug reports and ideas go in [issues](https://github.com/cablate/ctx-handoff-mod/issues/new/choose).
 - [Security](SECURITY.md): how to report a vulnerability privately.
+
+## Credits
+
+- The status card, session digest, cache TTL detection, compaction toast and irreversible-command check follow ideas from [SaM-runtime/claude-console](https://github.com/SaM-runtime/claude-console) (MIT). The code here is written from scratch.
 
 ## License
 

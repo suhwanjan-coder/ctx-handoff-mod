@@ -41,18 +41,27 @@ export function agoText(ms: number) {
 const bodyText = (p: ProgressFields) =>
   `任務「${p.task}」、狀態${STATE_LABEL[p.state]}${p.verified ? `、最後驗證：${p.verified}` : ''}${p.next ? `、下一步：${p.next}` : ''}${p.files.length ? `、相關檔案：${p.files.join('、')}` : ''}`
 
-// 新對話開頭要提供的文字；不該提供就回 undefined：
-// 同一個 session 產生的（還在同一段對話）、已經交接出去、超過一天、這個 session 已經提供過
+export const progressBody = bodyText
+
+// 這份紀錄（進度備忘或狀態卡）該不該提供給 sid 這段對話：
+// 不是同一個 session 產生的（還在同一段對話）、沒有交接出去、一天內、這個 session 還沒提供過
+export const canOffer = (rec: { sid: string; at: number; handed?: true; offered?: string[] }, sid: string, now: number) =>
+  !(rec.sid === sid || rec.handed || rec.offered?.includes(sid) || now - rec.at > PROGRESS_MAX_AGE_MS)
+
+// 新對話開頭要提供的文字（body 是停在哪的一行說明）
+export const offerText = (ago: number, body: string) => [
+  `${NOTE_TAG} 上一段對話（${agoText(ago)}）停在：${body}。`,
+  '這是背景整理留下的簡短備忘，可能落後幾則訊息。使用者要接續時以此為起點，動手前先看實際的檔案與 git 狀態；使用者在做別的事就忽略，不要主動提起。',
+].join('\n')
+
+// 新對話開頭要提供的進度備忘；不該提供就回 undefined
 export function progressOffer(p: Progress | undefined, sid: string, now: number) {
-  if (!p || p.sid === sid || p.handed || p.offered?.includes(sid) || now - p.at > PROGRESS_MAX_AGE_MS) return undefined
-  return [
-    `${NOTE_TAG} 上一段對話（${agoText(now - p.at)}）停在：${bodyText(p)}。`,
-    '這是背景整理留下的簡短備忘，可能落後幾則訊息。使用者要接續時以此為起點，動手前先看實際的檔案與 git 狀態；使用者在做別的事就忽略，不要主動提起。',
-  ].join('\n')
+  if (!p || !canOffer(p, sid, now)) return undefined
+  return offerText(now - p.at, bodyText(p))
 }
 
 // 提供過了：記下是給哪個 session 的
-export const withOffered = (p: Progress, sid: string): Progress => ({ ...p, offered: [...(p.offered ?? []), sid].slice(-OFFERED_KEEP) })
+export const withOffered = <T extends { offered?: string[] }>(p: T, sid: string): T => ({ ...p, offered: [...(p.offered ?? []), sid].slice(-OFFERED_KEEP) })
 
 // 給整理模型看的目前進度（超過一天的當作沒有）
 export const progressForPrompt = (p: Progress | undefined, now: number) =>

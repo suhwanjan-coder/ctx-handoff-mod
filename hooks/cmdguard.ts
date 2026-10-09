@@ -1,0 +1,118 @@
+// 不可逆指令偵測：Bash／PowerShell 的指令裡有沒有刪整個資料夾、強制推送、丟棄未存改動、刪資料庫、發佈套件這類做了就回不去的操作（純函式，不碰 $；問使用者在 register.ts）。
+// 做法：先把引號與跳脫拿掉、續行接起來、換行當成分隔符號，再用一組樣式掃整串文字。
+// 因此 bash -c "…"、sh -c '…'、sudo …、xargs …、powershell／pwsh -Command "…"、cmd /c … 這些包裝裡面的指令，
+// 和不包裝的指令走同一條路被掃到（包裝本身不算不可逆，不會單獨觸發）；PowerShell 的 -EncodedCommand 另外解碼再掃。
+// 取捨：引號裡的字串也會被掃，echo "rm -rf /" 或 git commit -m "rm -rf" 會被攔下來問一次（寧可多問，不放過包裝裡的指令）。
+//
+// 樣式的寫法：
+// - 起頭條件 (?<![\w.-])：前面不能是字母、數字、底線、點或連字號，所以 form -rf、--rm -rf（docker run --rm）不算；/bin/rm 前面是斜線，算
+// - 「字」之間只用空格，字不含 ; & |，所以一個樣式不會跨過分隔符號或換行；字數有上限（WORDS），掃很長的指令（例如 heredoc）時工作量是線性的
+
+export type Hit = { id: string; label: string }
+
+// 掃兩種文字：lines 把換行當分隔符號（給指令樣式用）；flat 把換行當空格（給跨行的 SQL 用）
+type Text = { lines: string; flat: string }
+type Rule = { id: string; label: string; test: (t: Text) => boolean }
+
+// 一個「字」：不含空白與指令分隔符號；字後面接空格。ANY：前面最多 40 個字（懶惰比對）
+const WORDS = 40
+const W = '[^\\s;&|]+'
+const ANY = `(?:${W} +){0,${WORDS}}?`
+const START = '(?<![\\w.-])'
+const END = '(?=\\s|$)'
+const re = (source: string, flags = 'i') => new RegExp(source, flags)
+
+// git <任何全域選項> <子指令> …：子指令後面接空格才算（git push 單獨出現不算）
+const git = (sub: string, rest: string, flags = 'i') => re(`${START}git +${ANY}${sub} +${rest}`, flags)
+
+const RM_UNIX = re(`(?<!\\bgit )${START}rm(?:\\.exe)? +${ANY}(?:-[fiIdv]*[rR][fiIdvrR]*|--recursive)${END}`)
+const PS_REMOVE = re(`(?<!\\bgit )${START}(?:remove-item|ri|rm|del|erase|rd|rmdir) +${ANY}-r(?:e(?:c(?:u(?:r(?:s(?:e)?)?)?)?)?)?(?=[\\s:]|$)`)
+const CMD_RD = re(`${START}(?:del|erase|rmdir|rd) +${ANY}/s${END}`)
+
+const PUSH_FORCE = git('push', `${ANY}(?:--force(?:-with-lease|-if-includes)?(?:=\\S+)?|-[a-zA-Z]*f[a-zA-Z]*|\\+${W})${END}`)
+const RESET_HARD = git('reset', `${ANY}--hard${END}`)
+const CLEAN_FORCE = git('clean', `${ANY}(?:--force|-[a-zA-Z]*f[a-zA-Z]*)${END}`)
+// git clean 帶 -n／--dry-run 只是預演
+const CLEAN_DRY = git('clean', `${ANY}(?:--dry-run|-[a-zA-Z]*n[a-zA-Z]*)${END}`)
+const BRANCH_DELETE = git('branch', `${ANY}(?:-[a-zA-Z]*D[a-zA-Z]*|-[a-zA-Z]*(?:df|fd)[a-zA-Z]*|--delete +${ANY}--force|--force +${ANY}--delete)${END}`, '')
+const CHECKOUT_ALL = git('checkout', `(?:${ANY}-- +)?\\.${END}`)
+const RESTORE_ALL = git('restore', `${ANY}\\.${END}`)
+// git restore --staged . 只是取消暫存，不動工作區（同時帶 --worktree／-W 才算）
+const RESTORE_STAGED_ONLY = git('restore', `${ANY}(?:--staged|-S)${END}`, '')
+const RESTORE_WORKTREE = git('restore', `${ANY}(?:--worktree|-W)${END}`, '')
+
+const DROP_SQL = re('\\bdrop\\s+(?:table|database|schema)\\b')
+const TRUNCATE_SQL = re('\\btruncate\\s+table\\b')
+const PUBLISH = re(`${START}(?:npm|pnpm|yarn|bun) +${ANY}(?:publish|unpublish)${END}`)
+const PUBLISH_DRY = re(`--dry-run${END}`)
+const FORMAT_DRIVE = re(`${START}format(?:\\.com|\\.exe)? +[a-z]:`)
+const FORMAT_VOLUME = re(`${START}(?:format-volume|clear-disk)\\b`)
+
+const RULES: Rule[] = [
+  { id: 'rm-r', label: 'rm -r', test: t => RM_UNIX.test(t.lines) },
+  { id: 'remove-item-recurse', label: 'Remove-Item -Recurse', test: t => PS_REMOVE.test(t.lines) },
+  { id: 'del-s', label: 'del／rmdir /s', test: t => CMD_RD.test(t.lines) },
+  { id: 'push-force', label: 'git push --force', test: t => PUSH_FORCE.test(t.lines) },
+  { id: 'reset-hard', label: 'git reset --hard', test: t => RESET_HARD.test(t.lines) },
+  { id: 'clean-force', label: 'git clean -f', test: t => CLEAN_FORCE.test(t.lines) && !CLEAN_DRY.test(t.lines) },
+  { id: 'branch-D', label: 'git branch -D', test: t => BRANCH_DELETE.test(t.lines) },
+  { id: 'checkout-all', label: 'git checkout -- .', test: t => CHECKOUT_ALL.test(t.lines) },
+  { id: 'restore-all', label: 'git restore .', test: t => RESTORE_ALL.test(t.lines) && (!RESTORE_STAGED_ONLY.test(t.lines) || RESTORE_WORKTREE.test(t.lines)) },
+  { id: 'drop-sql', label: 'DROP TABLE／DATABASE', test: t => DROP_SQL.test(t.flat) },
+  { id: 'truncate-sql', label: 'TRUNCATE TABLE', test: t => TRUNCATE_SQL.test(t.flat) },
+  { id: 'publish', label: 'npm／pnpm publish', test: t => PUBLISH.test(t.lines) && !PUBLISH_DRY.test(t.lines) },
+  { id: 'format', label: 'format', test: t => FORMAT_DRIVE.test(t.lines) || FORMAT_VOLUME.test(t.lines) },
+]
+
+// 引號、跳脫、反引號拿掉，續行（行尾的 \ 或 PowerShell 的反引號）接起來，空白壓成一個空格：
+// 包在 "…"、'…'、`…` 裡的指令就和直接寫的一樣。lines 的換行變成「 ; 」，樣式不會跨行；flat 的換行變成空格
+export function normalize(command: string): Text {
+  const base = command
+    .replace(/\\\r?\n/g, ' ')
+    .replace(/`\r?\n/g, ' ')
+    .replace(/\\(["'`])/g, '$1')
+    .replace(/["'`]/g, ' ')
+  const squeeze = (s: string) => s.replace(/[ \t\f\v]+/g, ' ').trim()
+  return { lines: squeeze(base.replace(/\r?\n/g, ' ; ')), flat: squeeze(base.replace(/\s+/g, ' ')) }
+}
+
+// PowerShell -EncodedCommand／-enc／-e：Base64 的 UTF-16LE。解不出來就略過
+const ENCODED = re(`(?:powershell|pwsh)(?:\\.exe)? +${ANY}-(?:e|ec|enc|encodedcommand) +([A-Za-z0-9+/]{16,}={0,2})`)
+function decodeEncoded(command: string): string | undefined {
+  const b64 = ENCODED.exec(command.replace(/\r?\n/g, ' ; '))?.[1]
+  const decode = (globalThis as { atob?: (s: string) => string }).atob
+  if (!b64 || typeof decode !== 'function') return undefined
+  try {
+    const bin = decode(b64)
+    let out = ''
+    for (let i = 0; i + 1 < bin.length; i += 2) out += String.fromCharCode(bin.charCodeAt(i) | (bin.charCodeAt(i + 1) << 8))
+    return out
+  } catch {
+    return undefined
+  }
+}
+
+// 要掃的文字：原指令，加上 -EncodedCommand 解開的內容（可以再包一層）
+export function variants(command: string): Text[] {
+  const out = [normalize(command)]
+  let cur = command
+  for (let i = 0; i < 3; i++) {
+    const decoded = decodeEncoded(cur)
+    if (!decoded) break
+    out.push(normalize(decoded))
+    cur = decoded
+  }
+  return out
+}
+
+export const GUARDED_TOOLS = new Set(['Bash', 'PowerShell'])
+
+// 這個工具呼叫的指令有沒有不可逆操作；沒有回 undefined
+export function irreversible(tool: string, command: unknown): Hit | undefined {
+  if (!GUARDED_TOOLS.has(tool) || typeof command !== 'string' || !command.trim()) return undefined
+  for (const text of variants(command)) {
+    const rule = RULES.find(r => r.test(text))
+    if (rule) return { id: rule.id, label: rule.label }
+  }
+  return undefined
+}

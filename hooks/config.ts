@@ -5,7 +5,7 @@ import type { ReplyLangSetting } from './lang'
 
 // 使用者設定：在面板「設定」分頁調整，存在 $.store 的 settings（所有工作區共用）；
 // settings.json 的 pluginConfigs["ctx-handoff@<marketplace>"].options 寫了也讀，面板的值優先。
-// 不宣告 userConfig：/config 一列一個設定會越來越長（維護者 2026-10-08 決定）。第一次用到、送出新訊息、面板改值時重讀
+// plugin.json 的 userConfig 宣告每一個設定（鍵、預設值要和下面的 SETTINGS 一致，有測試檢查）。第一次用到、送出新訊息、面板改值時重讀
 type Config = {
   // 在場 handoff：context 達 min(threshold, 視窗 × windowRatio) 時產生 handoff → /clear → 送出
   threshold: number; windowRatio: number
@@ -25,6 +25,12 @@ type Config = {
   replyLanguage: ReplyLangSetting
   // 新對話開頭提供上一段對話停在哪（背景整理留下的進度備忘）
   resumeHint: boolean
+  // 把專案經驗檔的內容帶進新對話與下一則訊息（預設關：經驗只留在檔案與面板，整理照常跑）
+  injectNotes: boolean
+  // 狀態卡：維護專案 _HANDOFF.md 裡 ctx-handoff 標記之間的一段；cardModel 空字串＝用 notesModel
+  card: boolean; cardModel: string
+  // 不可逆指令確認：Bash／PowerShell 的 rm -rf、git push --force 等先問使用者
+  commandGuard: boolean
 }
 
 // 每個設定的型別與範圍：讀值時檢查、面板照它畫列與調整（數字每按一下加減 step，選項依序輪）
@@ -46,6 +52,11 @@ export const SETTINGS: readonly SettingSpec[] = [
   { key: 'retry_nudge', kind: 'bool', d: true },
   { key: 'done_check', kind: 'bool', d: true },
   { key: 'resume_hint', kind: 'bool', d: true },
+  { key: 'inject_notes', kind: 'bool', d: false },
+  { key: 'card', kind: 'bool', d: true },
+  // 空字串＝跟 notes_model 一樣
+  { key: 'card_model', kind: 'choice', options: ['', 'claude-sonnet-5-5', 'claude-opus-5-5'], d: '', free: true },
+  { key: 'command_guard', kind: 'bool', d: true },
 ]
 export const specOf = (key: string) => SETTINGS.find(s => s.key === key)
 
@@ -73,12 +84,18 @@ export const settingSource = (key: string, panel: Record<string, unknown>, optio
 const CONFIG_DEFAULTS: Config = {
   threshold: 600_000, windowRatio: 0.8, idleMs: 55 * 60_000, maxRefresh: 3, minTokens: 30_000, distillEvery: 30,
   notesModel: 'claude-sonnet-5-5', language: 'auto', retryNudge: true, doneCheck: true, replyLanguage: 'auto', resumeHint: true,
+  injectNotes: false, card: true, cardModel: '', commandGuard: true,
 }
 // 目前的設定：只改欄位、不換物件，各檔 import 到的是同一份
 export const cfg: Config = { ...CONFIG_DEFAULTS }
 export const resetConfig = () => { Object.assign(cfg, CONFIG_DEFAULTS) }
 
 export const KEEP = 5
+// 狀態卡：一次整理請求的輸出上限、時限，以及交接時最多等它多久才 /clear
+export const CARD_MAX_TOKENS = 2_000
+export const CARD_TIMEOUT_MS = 2 * 60_000
+export const CARD_GRACE_MS = 5_000
+export const CARD_EFFORT = 'low'
 // fork 沒有取消參數：超過時限就不再等（交接放棄、攔下的訊息送回舊對話），它在背景跑完也不採用
 export const HANDOFF_TIMEOUT_MS = 3 * 60_000
 export const DISTILL_TIMEOUT_MS = 8 * 60_000
@@ -126,5 +143,9 @@ export function resolveConfig(options: Record<string, unknown>, panel: Record<st
     doneCheck: get('done_check') as boolean,
     replyLanguage: get('reply_language') as ReplyLangSetting,
     resumeHint: get('resume_hint') as boolean,
+    injectNotes: get('inject_notes') as boolean,
+    card: get('card') as boolean,
+    cardModel: get('card_model') as string,
+    commandGuard: get('command_guard') as boolean,
   }
 }

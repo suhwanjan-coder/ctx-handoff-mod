@@ -24,21 +24,51 @@ context 到 600k token（較小的視窗是 80%）時，會等 Claude 做完這�
 
 <img src="distill-demo.gif" width="300" alt="示範：同一件事講了三次，開新對話後被忘記；ctx-handoff 把它整理成一條規則，下一段對話就記得了">
 
-你糾正或說明過的事，會整理進每個專案一份的筆記檔，每次開新對話自動帶入。它是可以直接編輯的 Markdown：`~/.claude/projects/<專案路徑>/memory/ctx-handoff.md`。
+你糾正或說明過的事，會整理進每個專案一份的筆記檔。它是可以直接編輯的 Markdown：`~/.claude/projects/<專案路徑>/memory/ctx-handoff.md`。**預設不會把筆記帶進你的對話**：它們留在檔案和面板裡，背景整理照常跑（守門和進度都靠它）。打開 `inject_notes` 才會照下面說的帶入。
 
-- **記憶**：偏好、修正、事實與位置。偏好與修正整條帶入，而且要對得上你自己說過的話才會記；事實與位置只帶標題，Claude 需要時再讀細節。事實類超過 30 天沒再被證實就封存（不帶入、不刪除）。
-- **規則**：一再出現的做法，例如「Bash 路徑用正斜線（3 次）」。出現兩次以上才帶入。
-- **流程**：你讓 Claude 重複做過的多步驟工作，例如「發版：改版號 → 更新 changelog → 打 tag → 發 GitHub release」。不帶入新對話，讓 context 保持精簡。
+- **記憶**：偏好、修正、事實與位置。`inject_notes` 打開時，偏好與修正整條帶入，而且要對得上你自己說過的話才會記；事實與位置只帶標題。事實類超過 30 天沒再被證實就封存（不帶入、不刪除）。
+- **規則**：一再出現的做法，例如「Bash 路徑用正斜線（3 次）」。`inject_notes` 打開時，出現兩次以上才帶入。
+- **流程**：你讓 Claude 重複做過的多步驟工作，例如「發版：改版號 → 更新 changelog → 打 tag → 發 GitHub release」。從不帶入，只留在筆記檔裡。
 
 筆記在每 30 則你的訊息、閒置 55 分鐘、交接前，或打 `/handoff distill` 時更新。只送上次之後新增的對話給 Sonnet 5.5（effort low），短的一次約 1,200 token；不到 30k token 的對話不整理；看起來像金鑰或密碼的內容會被丟掉。狀態列會倒數（「再 18 則整理筆記」）。
 
-**出現 3 次就放進 repo。** 規則出現 3 次（或守門已啟用）時，下一段在 git repo 開的對話會請 Claude 在做完你交代的事之後，把它放進專案放規則的地方：CLAUDE.md、AGENTS.md 或現有的 hook。流程出現 3 次則做成專案 skill：`.claude/skills/<名稱>/SKILL.md`。Claude 會檢查有沒有重複、不 commit，並用一句話告訴你加了什麼、放在哪，你照平常看 diff 就看得到。之後由 repo 保存，換機器、換工具都有效，ctx-handoff 不再帶入自己那份。你說不要就會復原，之後不再提。
+ctx-handoff 不會寫你專案裡的 `CLAUDE.md`、`AGENTS.md` 或 skill 檔案：你自己的規則放在你放的地方，這個 mod 只讀寫自己的筆記檔。
 
 ### 告訴新對話停在哪
 
 你自己 `/clear`、Claude Code 當掉，或單純開新對話時，新對話不知道上一段做到哪。所以每次整理筆記時，也會為這個資料夾留一份簡短的進度：在做什麼、完成了／進行中／卡住、最後通過的檢查、下一步，以及最多 5 個關鍵檔案。它和筆記在同一個請求裡完成。
 
-同一個資料夾的下一段對話，會在 24 小時內被提醒一次：「上一段對話（2 小時前）停在……」。你要接著做，Claude 就從那裡開始；你在做別的事，它就不理會。已經自動交接過的對話不會收到，因為摘要已經涵蓋了。
+同一個資料夾的下一段對話，會在 24 小時內被提醒一次：「上一段對話（2 小時前）停在……」。你要接著做，Claude 就從那裡開始；你在做別的事，它就不理會。已經自動交接過的對話不會收到，因為摘要已經涵蓋了。專案有狀態卡（下一節）時，改告訴新對話卡片上的狀態與下一步，所以你在 `_HANDOFF.md` 手動改過的那一行，新對話聽到的就是那一行。
+
+### 在 `_HANDOFF.md` 維護狀態卡
+
+每次交接之後（自動、`/handoff now`，或離席時存的那份），以及背景整理有進度備忘時，ctx-handoff 會重寫專案根目錄 `_HANDOFF.md` 裡的一塊：根目錄是你啟動 session 的資料夾，從 git worktree 啟動時是主工作樹。這一塊有更新時間（台北時間）、session 與版次、狀態、執行中的東西、等你回答的事、下一步、最後一次驗證、試過不行的做法（最多 5 條）與決策（最多 5 條）。
+
+- 只換 `<!-- ctx-handoff:card rev=N -->` 與 `<!-- /ctx-handoff:card -->` 之間的內容。第一次放在第一個 `# ` 標題後面，沒有標題就放最上面。你的文字、它的換行（CRLF 或 LF）與 BOM 都保持原樣。
+- 寫入前一刻再量一次檔案的修改時間與大小。這中間你存過檔，就重讀一次再試；又變了就放棄並提示，絕不覆蓋。
+- 每個 session 第一次寫之前，先把檔案複製到 `.ctx-handoff-backup/_HANDOFF.md.bak`。
+- 沒有 `_HANDOFF.md` 時不會建立。卡片只留在 ctx-handoff 內部，`/handoff` 會說明；打 `/handoff card init` 會建立檔案，內容是 `# 交接` 標題加狀態卡。
+
+卡片文字由一個低 effort 的請求產生（`card_model`，預設用整理筆記的模型），輸入是上一版卡片、session 摘要，以及交接摘要或進度備忘，不送整段對話。失敗的話，狀態與下一步直接從摘要填入。設定：`card`。
+
+### session 摘要與快取 TTL
+
+`/handoff` 會用四行顯示這個 session 的摘要：目前工作、最後活動時間、最近 3 個工具呼叫、最後一句回覆。內容來自對話檔最後 64 KB；對話檔超過 4 MiB 時用 `tail`（Windows 沒有就用 PowerShell）讀尾端，檔案沒變就用快取。狀態卡更新也拿同一份摘要。
+
+同一段尾端還看得出這個 session 寫的是 1 小時還是 5 分鐘的快取。只寫 5 分鐘快取的 session 撐不到 55 分鐘，保持快取的請求幫不上忙，所以略過，改存離席摘要；`/handoff` 會顯示偵測到的 TTL 並說明原因。尾端看不出來時，保持快取照原本的方式做。
+
+### 壓縮
+
+對話被壓縮時（`/compact` 或自動），會提示壓縮前後的大小（「已壓縮 214k → 31k」），閒置計時重新開始。之後的 Stop 不拿還是壓縮前的 context 讀數判斷，最多略過 3 次，所以自動交接不會被過時的數字觸發。
+
+### 不可逆指令
+
+Bash 或 PowerShell 要執行回不去的指令前，會先問你「允許」或「拒絕」。拒絕或關掉詢問框，指令就不執行，並告訴 Claude。你核准的守門先比對。
+
+- 會問的：`rm -r` 與 `rm -rf`、`Remove-Item -Recurse`、`rmdir /s`、`del /s`、`git push --force`、`-f` 與 `--force-with-lease`、`git reset --hard`、`git clean -f`、`git branch -D`、`git checkout -- .`、`git restore .`、`DROP TABLE` 與 `DROP DATABASE`、`TRUNCATE TABLE`、`npm publish`、`pnpm publish` 和 `format D:`。包在 `bash -c`、`sh -c`、`sudo`、`xargs`、`powershell -Command`、`cmd /c` 和 PowerShell 的 `-EncodedCommand` 裡面的指令也會檢查。
+- 不會問的：`rm file.txt`、`git push`、`grep -rf`、`git clean -n`、`git restore --staged .` 和 `npm publish --dry-run`。當成文字出現的指令，例如 `echo "rm -rf /"`，會問一次：引號裡的字也會掃，藏在引號裡的指令才不會漏掉。
+
+沒有畫面可以問時（`claude -p`、SDK，或沒有接上任何畫面），指令照常執行，只留一行紀錄，排程工作才不會卡住。設定：`command_guard`。
 
 ### 防呆提醒
 
@@ -67,15 +97,19 @@ context 到 600k token（較小的視窗是 80%）時，會等 Claude 做完這�
 | `threshold` | `600000` | context 到多少 token 時交接 |
 | `window_ratio` | `0.8` | 視窗較小時，在 `window × ratio`（視窗 × 這個比例）交接 |
 | 離開時保持快取 | 開 | 也可用 `/handoff refresh on\|off` |
-| `idle_minutes` | `55` | 閒置幾分鐘後保持快取（5–59） |
+| `idle_minutes` | `55` | 閒置幾分鐘後保持快取（5–59）；快取只有 5 分鐘時略過 |
 | `max_refresh` | `3` | 每段閒置最多保持幾次，之後改存摘要 |
 | 專案筆記 | 開 | 也可用 `/handoff distill on\|off` |
 | `distill_every` | `30` | 每幾則你的訊息整理一次筆記（5–200） |
 | `min_tokens` | `30000` | 比這小的對話不保持快取、不存離席摘要、不整理筆記 |
 | `notes_model` | `claude-sonnet-5-5` | 整理筆記用的模型：Sonnet 5.5 或 Opus 5.5 |
+| `inject_notes` | 關 | 把筆記檔的內容帶進新對話與下一則訊息 |
+| `card` | 開 | 在 `_HANDOFF.md` 維護狀態卡 |
+| `card_model` | 空白 | 狀態卡用的模型；空白代表和 `notes_model` 一樣 |
 | `resume_hint` | 開 | 告訴新對話上一段停在哪 |
 | `retry_nudge` | 開 | 重複失敗提醒 |
 | `done_check` | 開 | 說完成卻沒驗證的提醒 |
+| `command_guard` | 開 | 執行不可逆的 Bash 與 PowerShell 指令前先問 |
 | `reply_language` | `auto` | 回覆語言提醒：`auto`、`off`、`zh-TW`、`zh-CN`、`en` 或 `ja` |
 | `language` | `auto` | 狀態列、提示與面板的語言：`auto`、`en` 或 `zh-TW` |
 
@@ -95,7 +129,7 @@ context 到 600k token（較小的視窗是 80%）時，會等 Claude 做完這�
 
 | 指令 | 用途 |
 |---|---|
-| `/handoff` | context 用量、哪些功能開著、最近的進度與錯誤 |
+| `/handoff` | context 用量、哪些功能開著、最近的進度、session 摘要、快取 TTL、狀態卡與錯誤 |
 | `/handoff panel` | 開關面板 |
 | `/handoff now` | 立刻交接（會清空對話） |
 | `/handoff dry` | 產生交接摘要並顯示花費，不清空 |
@@ -103,6 +137,7 @@ context 到 600k token（較小的視窗是 80%）時，會等 Claude 做完這�
 | `/handoff resume`／`continue` | 離開回來後：用摘要開新對話，或留在原對話 |
 | `/handoff resend` | 交接摘要沒送到時重送 |
 | `/handoff refresh on\|off`、`distill on\|off` | 開關保持快取或專案筆記 |
+| `/handoff card` | 顯示狀態卡在哪、寫了什麼；`card init` 建立 `_HANDOFF.md` |
 | `/handoff guard` | 列出守門；`suggest` 草擬新的，`on\|off\|drop N` 核准、停用或刪除，`mode N deny\|remind` 切換擋下或提醒 |
 
 ## 花費、隱私與權限
@@ -112,6 +147,7 @@ context 到 600k token（較小的視窗是 80%）時，會等 Claude 做完這�
 - 交接：一個請求讀整段對話（大多從快取讀）並寫摘要，800k token 時約 30 秒。
 - 保持快取：一個很小的請求，從快取讀整段對話，約一般輸入價的十分之一；每段閒置最多 3 次。
 - 筆記：只送新增的對話給 Sonnet 5.5（effort low）。進度在同一個請求裡完成。
+- 狀態卡：每次交接之後、以及每次有進度備忘的整理之後，各一個很小的低 effort 請求。送的是上一版卡片、四行摘要，以及交接摘要或進度備忘，不送整段對話。
 - 防呆提醒不發任何請求。
 
 **哪些資料會送出去。** 除了 Anthropic 之外不送到任何地方，而且是透過 Claude Code 送出，和對話本身一樣。整理筆記時會送出你的訊息、Claude 的回覆與工具呼叫（每個輸入取前 300 字、每個結果取前 500 字），最多 300,000 字。
@@ -122,24 +158,28 @@ context 到 600k token（較小的視窗是 80%）時，會等 Claude 做完這�
 |---|---|
 | 專案筆記 | `~/.claude/projects/<專案路徑>/memory/ctx-handoff.md` |
 | 從面板刪除前的備份 | 筆記檔旁邊的 `.ctx-handoff-backup/` |
-| 面板上的設定、最近的交接摘要、進度、錯誤紀錄 | `~/.claude/plugins/store/ctx-handoff_*.json` |
+| 狀態卡 | 專案根目錄的 `_HANDOFF.md`，只動標記之間 |
+| 每個 session 第一次寫卡片之前的 `_HANDOFF.md` 備份 | 專案根目錄的 `.ctx-handoff-backup/_HANDOFF.md.bak` |
+| 面板上的設定、最近的交接摘要、進度、狀態卡的副本、錯誤紀錄 | `~/.claude/plugins/store/ctx-handoff_*.json` |
 
 **它能做什麼。** mod 沒有沙箱，會用你的權限執行。不用執行就能檢查它用了什麼：`claude plugin validate <ctx-handoff 資料夾>` 會印出 `hooks:`（它接收的事件）與 `calls:`（程式呼叫的功能）兩行，意思如下：
 
 | 輸出裡的項目 | 用途 |
 |---|---|
-| `tool.call` | 套用你核准的守門；注意重複失敗、改檔後有沒有跑測試；附上回覆語言提醒 |
+| `tool.call` | 套用你核准的守門；不可逆指令前先問；注意重複失敗、改檔後有沒有跑測試；附上回覆語言提醒 |
 | `turn.step` | 讀主對話裡 Claude 回覆的可見文字，判斷語言；不改請求、模型或回覆 |
 | `prompt.submit`、`prompt.context` | 交接時攔下你的訊息；把筆記與進度帶入新對話；重讀設定 |
 | `$.session.messages`、`$.model.complete`、`$.model.fork` | 讀對話來整理筆記、寫交接摘要 |
-| `$.fs.read`、`$.fs.write`、`$.fs.exists` | 讀寫筆記檔與備份；確認專案是不是 git repo |
+| `$.fs.read`、`$.fs.write`、`$.fs.exists`、`$.fs.stat` | 讀寫筆記檔、`_HANDOFF.md`（只動標記之間）與它們的備份；寫入前與讀對話檔尾端前量檔案大小與修改時間；確認專案是不是 git repo |
+| `$.process.run` | 用 `tail` 或 PowerShell 讀超過 4 MiB 的對話檔尾端，不執行其他東西 |
+| `$.ui.ask`、`$.session.surfaces` | 不可逆指令前問「允許」或「拒絕」；確認有沒有畫面可以顯示詢問 |
+| `session.compact` | 注意到壓縮：提示、重新計時、略過過時的 context 讀數 |
 | `$.prompt.submit`、`$.command.run` | 把摘要送進新對話；執行 `/clear` |
 | `$.env.get` | 讀三個環境變數 `CLAUDE_CONFIG_DIR`、`HOME`、`USERPROFILE`，只用來找到你的 `~/.claude` 資料夾，不需要另外設定 |
-| `$.tool.register` | 給 Claude 一個工具 `mark_in_project`，回報規則或流程放在 repo 的哪裡 |
 | `$.settings.read`、`config.set` | 讀 Claude Code 的 `language` 設定與這個 plugin 的 `pluginConfigs`；你改 Claude Code 的設定時跟著更新 |
 | 其餘：`session.start`、`turn.complete`、`classic.Stop`、`command.run`、`$.command.register`、`ui.render`、`$.store`、`$.state`、`$.clock`、`$.ui`、`$.agent.list`、`$.session.*` | 日常運作：計時、`/handoff` 指令、狀態列、面板與提示、自己的儲存空間、交接前確認 Claude 和子代理都做完了，以及「說完成卻沒驗證」的提醒 |
 
-它不自己連網、不啟動任何程式（沒有 `$.http` 或 `$.process` 呼叫）。想在不載入任何 mod 的狀態下工作，用 `claude --safe-mode` 啟動。另見 [`SECURITY.md`](../SECURITY.md)。
+它不自己連網（沒有 `$.http` 呼叫）。它能啟動的程式只有 `tail` 和 PowerShell，用來讀很大的對話檔尾端。想在不載入任何 mod 的狀態下工作，用 `claude --safe-mode` 啟動。另見 [`SECURITY.md`](../SECURITY.md)。
 
 ## 支援的環境
 
@@ -155,7 +195,8 @@ Claude Code 在大多數地方都會載入 mod，但只有終端機與 Desktop a
 
 ## 限制
 
-- **快取只有 5 分鐘時，請關掉保持快取。** 用 API key、Bedrock、Vertex，或訂閱用量用完改扣額度的人，快取只有 5 分鐘，在 55 分鐘送請求等於整段重寫快取。執行 `/handoff refresh off`；這點不會自動偵測。
+- **偵測得到 5 分鐘快取，但不保證。** 用 API key、Bedrock、Vertex，或訂閱用量用完改扣額度的人，快取只有 5 分鐘。ctx-handoff 從對話檔尾端讀出 session 寫的是哪一種，略過幫不上忙的保持快取請求。看不出來時（剛開的 session、讀不到的檔案）照原本的方式保持快取，所以你知道自己的快取很短的話，執行 `/handoff refresh off`。
+- **狀態卡是重寫，不是合併。** 你自己的筆記請寫在標記外面。標記裡的修改會當成下一次更新的起點，但之後的更新可能重寫它。
 - **筆記跟著你啟動時所在的資料夾。** 在家目錄開 session 去改別的專案，筆記會記在家目錄底下。筆記不跨專案共用。
 - **進度只跟最近一次整理一樣新。** 短對話或當機後可能沒有、或落後幾則；想要準確，`/clear` 前先打 `/handoff distill`。同一個資料夾同時開兩段對話時，會看到彼此的進度。
 - **其他 session 要在下一則訊息才套用改過的設定**，不是立刻。

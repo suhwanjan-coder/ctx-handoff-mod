@@ -2,7 +2,7 @@
 import type { PanelData, PanelSetting } from '../types'
 import { guardCandidatesOf } from './guards'
 import type { Guard } from './guards'
-import { EVIDENCE_KEEP, STALE_DAYS, isArchived, memHead, memLines, projectOf } from './notes'
+import { EVIDENCE_KEEP, STALE_DAYS, isArchived, memHead, memLines } from './notes'
 import type { Memory, Notes } from './notes'
 import type { DistillLast } from './records'
 
@@ -20,8 +20,8 @@ export function panelSnapshot(file: string, notes: Notes, guards: Guard[], d: Di
     memoryTotal: notes.memory.length,
     archived: notes.memory.filter(m => isArchived(m, today)).map(memHead),
     staleDays: STALE_DAYS,
-    rules: [...notes.rules].sort((a, b) => b.count - a.count).map(r => ({ name: r.name, count: r.count, ...(projectOf(r) ? { project: projectOf(r) } : {}) })),
-    procedures: [...notes.procedures].sort((a, b) => b.count - a.count).map(p => ({ name: p.name, count: p.count, ...(projectOf(p) ? { project: projectOf(p) } : {}) })),
+    rules: [...notes.rules].sort((a, b) => b.count - a.count).map(r => ({ name: r.name, count: r.count })),
+    procedures: [...notes.procedures].sort((a, b) => b.count - a.count).map(p => ({ name: p.name, count: p.count })),
   }
 }
 

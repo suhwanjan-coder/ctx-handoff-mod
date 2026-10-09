@@ -6,26 +6,28 @@ import type { PanelActions } from './panel'
 import { getLang, pickLang, setLang, t } from './i18n'
 import type { Lang } from './i18n'
 import { applyActions, distillPrompt, latestProgress, parseActions, squash } from './distill'
-import { progressForPrompt, progressKey, progressOffer, withOffered } from './progress'
+import { canOffer, offerText, progressBody, progressForPrompt, progressKey, progressOffer, withOffered } from './progress'
 import type { Progress, ProgressFields } from './progress'
 import { GUARD_MIN_COUNT, applyGuardChange, guardCandidatesOf, guardChangeOf, guardHits, guardListText, guardPrompt, guardSummaryText, inputText, parseGuards, withProposals } from './guards'
 import type { Guard, GuardMode } from './guards'
 import { NOTE_TAG, contextText, localStamp, memHead, noteBlock, parseNotes, renderNotes, tag } from './notes'
-import type { Notes } from './notes'
 import { encodeProject, isAbs, resolveDots, slash } from './paths'
 import { anchorOf, transcriptOf } from './transcript'
 import type { Row } from './transcript'
-import { DISTILL_EFFORT, DISTILL_GRACE_MS, DISTILL_MAX_TOKENS, DISTILL_TIMEOUT_MS, GUARD_MAX_TOKENS, HANDOFF_TIMEOUT_MS, KEEP, DEFER_CAP_EXTRA, DEFER_CAP_RATIO, RELOAD_GRACE_MS, RETRY_MS, RETRY_TURNS, STOPPED, cfg, optionsOf, resetConfig, resolveConfig, settingSource, settingValue, specOf, stepSetting, thresholdOf } from './config'
+import { CARD_EFFORT, CARD_GRACE_MS, CARD_MAX_TOKENS, CARD_TIMEOUT_MS, DISTILL_EFFORT, DISTILL_GRACE_MS, DISTILL_MAX_TOKENS, DISTILL_TIMEOUT_MS, GUARD_MAX_TOKENS, HANDOFF_TIMEOUT_MS, KEEP, DEFER_CAP_EXTRA, DEFER_CAP_RATIO, RELOAD_GRACE_MS, RETRY_MS, RETRY_TURNS, STOPPED, cfg, optionsOf, resetConfig, resolveConfig, settingSource, settingValue, specOf, stepSetting, thresholdOf } from './config'
 import { resetRuntime, rt } from './runtime'
 import { doneCheck, freshWork, noteCall, trackFailure } from './loops'
 import { clearNext, noteStep, peekNext, resolveReplyLang, takePending } from './lang'
 import { awayKey, describeUsage, pendingKey, pruneSeen } from './records'
 import type { Away, DistillError, DistillLast, HandoffError, Kind, Saved, Usage } from './records'
 import { HANDOFF_PROMPT, forkFailure, heldBlock } from './handoff'
-import { PROMOTE_DESCRIPTION, PROMOTE_SCHEMA, PROMOTE_TOOL, applyInProject, markAsked, promoteItems, promoteReport, promoteText } from './promote'
-import type { PromoteAsk } from './promote'
 import { backupPath, keepMemory, panelSnapshot, withoutNote } from './panel-data'
 import { distillStatusText, statusText, usageText } from './status'
+import { CARD_FILE, applyCard, cardFromHandoff, cardFromProgress, cardInput, cardKey, cardPrompt, emptyFields, findCard, newCardFile, parseCard, parseCardReply, renderCard, taipeiStamp } from './card'
+import type { Card, CardFields } from './card'
+import { DIGEST_LABELS_ZH, FS_READ_LIMIT, TAIL_BYTES, TAIL_BYTES_WIDE, digestLines, digestOf, digestOfRows, hasContent, parseTail } from './digest'
+import type { Digest } from './digest'
+import { irreversible } from './cmdguard'
 
 // 讀本 plugin 的設定：面板存在 store 的 settings 優先，其次 settings.json 的 pluginConfigs["ctx-handoff@<marketplace>"].options
 async function readSettings($: EngineInterface) {
@@ -249,7 +251,10 @@ async function distill($: EngineInterface, why: string, queue = true) {
     if (changes.length > 0) await $.fs.write(file, renderNotes(updated, stamp))
     // 進度備忘（沒有實際進展時模型不輸出，前一份保留）
     const progress = latestProgress(actions)
-    if (progress) await saveProgress($, sid, progress, now)
+    // 存了進度才更新狀態卡（已經交接出去的 session 不更新，卡片以交接那次為準）
+    if (progress && (await saveProgress($, sid, progress, now))) {
+      await queueCard($, { sid, digest: await sessionDigest($), source: { kind: 'progress', p: progress } })
+    }
     await $.store.set(key, { turn: turns, at: now, anchor })
     await touchSeen($, key)
     const usage = describeUsage({ input: r.usage.input_tokens, cacheRead: r.usage.cache_read_input_tokens, cacheCreation: r.usage.cache_creation_input_tokens, output: r.usage.output_tokens, ms: now - started })
@@ -257,13 +262,15 @@ async function distill($: EngineInterface, why: string, queue = true) {
     await refreshPanel($)
     $.ui.log(t().distill.doneLog(why, changes.length, rejected.count, file))
     // 先寫檔再排入；差異跟著下一則真正送進對話的訊息帶入（見 prompt.submit）
-    if (changes.length > 0 && queue) {
+    // inject_notes 關：不排入差異（經驗檔的內容不進對話），toast 照跳
+    const queued = queue && cfg.injectNotes
+    if (changes.length > 0 && queued) {
       rt.pendingNotes.set(sid, { changes: [...(rt.pendingNotes.get(sid)?.changes ?? []), ...changes], file })
       $.ui.log(t().distill.queued(changes.length))
     }
     // 讓使用者看得到：寫了哪份檔案（完整路徑），不送訊息、不花 token
     if (changes.length > 0) {
-      $.ui.toast(t().distill.toast(changes.length, queue, file))
+      $.ui.toast(t().distill.toast(changes.length, queued, file))
     }
     return r
   } catch (err) {
@@ -299,7 +306,7 @@ async function distillStatus($: EngineInterface) {
   const file = await notesFile($)
   const notes = parseNotes(await readText($, file))
   const today = localStamp(await $.clock.now()).slice(0, 10)
-  return distillStatusText({ on, d, err, file, notes, today, since: on ? await sinceDistill($) : 0 })
+  return distillStatusText({ on, d, err, file, notes, today, since: on ? await sinceDistill($) : 0, inject: cfg.injectNotes })
 }
 
 // 到期時間與刷新次數另存 $.state：熱重載會清掉計時器與模組變數，session.start 依它重排
@@ -330,7 +337,14 @@ async function onIdle($: EngineInterface) {
   const tokens = context.tokens ?? 0
   if (tokens < cfg.minTokens) return
 
-  if ((await isRefreshOn($)) && rt.refreshes < cfg.maxRefresh) {
+  // 只寫 5 分鐘快取的 session：55 分鐘後的刷新讀不到快取，幫不上忙，直接存離席 handoff
+  const canRefresh = (await isRefreshOn($)) && rt.refreshes < cfg.maxRefresh
+  let shortTtl = false
+  if (canRefresh) {
+    try { shortTtl = (await sessionDigest($)).ttl.kind === '5m' } catch {}
+    if (shortTtl) $.ui.log(t().digest.ttlSkipLog)
+  }
+  if (canRefresh && !shortTtl) {
     // 刷新用最便宜的 fork（只回 OK）讀一次快取；整理是另一個不帶歷史的請求，有新對話才跑
     const r = await forkWithin($, '只回覆 OK', HANDOFF_TIMEOUT_MS)
     if (await isDistillOn($)) await distill($, t().distill.why.idle)
@@ -347,11 +361,13 @@ async function onIdle($: EngineInterface) {
     if (await isDistillOn($)) await distill($, t().distill.why.away)
     const handoff = await makeHandoff($, 'away', tokens)
     if (handoff === undefined) return
-    const key = awayKey(await $.session.id())
+    const awaySid = await $.session.id()
+    const key = awayKey(awaySid)
     await $.store.set(key, { handoff } satisfies Away)
     await touchSeen($, key)
     $.ui.log(t().idle.awaySavedLog(tokens))
     $.ui.toast(t().idle.awaySavedToast)
+    await cardAfterHandoff($, handoff, awaySid).catch(() => undefined)
   } finally {
     rt.busy = false
   }
@@ -388,10 +404,12 @@ async function present($: EngineInterface, tokens: number | null, kind: 'present
     const lastDistill = isDistillOn($).then(on => on ? distill($, t().distill.why.before, false) : undefined).catch(() => undefined)
     const handoff = await makeHandoff($, kind, tokens)
     if (handoff === undefined) { await drain(resubmit); return }
+    // 狀態卡也在這時開始更新（session 摘要要在 /clear 之前讀好）；和整理一起最多等 DISTILL_GRACE_MS，之後在背景跑完
+    const card = cardAfterHandoff($, handoff, sid).catch(() => undefined)
     // 整理一開始就讀好對話片段：從交接開始最多等 DISTILL_GRACE_MS 就 /clear，
     // 整理在背景跑完照樣寫檔（它不排入差異）
-    const left = startedAt + DISTILL_GRACE_MS - (await $.clock.now())
-    if (left > 0) await within($, lastDistill, left, undefined)
+    const left = startedAt + Math.max(DISTILL_GRACE_MS, CARD_GRACE_MS) - (await $.clock.now())
+    if (left > 0) await within($, Promise.all([lastDistill, card]), left, undefined)
     const why = kind === 'manual' ? t().handoff.whyManual : t().handoff.whyTokens(tokens ?? 0)
     const included = [...rt.held]
     delivered = included.length
@@ -447,6 +465,12 @@ async function onStop($: EngineInterface, e: { agent_id?: string; background_tas
   const { context } = await $.session.usage()
   const tokens = context.tokens
   const threshold = thresholdOf(context.window)
+  // 剛壓縮過、讀數還是壓縮前的：不拿它判斷交接
+  const before = rt.compact?.before
+  if (staleAfterCompact(tokens)) {
+    if (tokens !== undefined && tokens >= threshold) $.ui.log(t().compact.staleLog(tokens, before ?? 0))
+    return
+  }
   if (tokens === undefined || tokens < threshold) {
     rt.deferral = undefined
     rt.deferToasted = false
@@ -604,7 +628,7 @@ async function loadPanelData($: EngineInterface): Promise<PanelData> {
 }
 
 // 設定分頁的列：SETTINGS 的值加上兩個用指令也能切的開關（保持快取、專案筆記，存在 store 的 refresh／distill），依主題排
-const SETTING_ORDER = ['threshold', 'window_ratio', 'refresh', 'idle_minutes', 'max_refresh', 'distill', 'distill_every', 'min_tokens', 'notes_model', 'resume_hint', 'retry_nudge', 'done_check', 'reply_language', 'language']
+const SETTING_ORDER = ['threshold', 'window_ratio', 'refresh', 'idle_minutes', 'max_refresh', 'distill', 'distill_every', 'min_tokens', 'notes_model', 'inject_notes', 'card', 'card_model', 'resume_hint', 'retry_nudge', 'done_check', 'command_guard', 'reply_language', 'language']
 const STORE_SWITCHES = new Set(['refresh', 'distill'])
 
 async function settingRows($: EngineInterface): Promise<PanelSetting[]> {
@@ -708,66 +732,372 @@ async function dropNote($: EngineInterface, key: string) {
 const progressKeyOf = async ($: EngineInterface) => progressKey(await projectKey($))
 const loadProgress = async ($: EngineInterface) => (await $.store.get(await progressKeyOf($))) as Progress | undefined
 
-// 已經交接出去的 session 之後才跑完的整理不存（handoff 摘要已涵蓋）
+// 已經交接出去的 session 之後才跑完的整理不存（handoff 摘要已涵蓋）；回傳有沒有存
 async function saveProgress($: EngineInterface, sid: string, p: ProgressFields, at: number) {
-  if (rt.handed.has(sid)) return
+  if (rt.handed.has(sid)) return false
   await $.store.set(await progressKeyOf($), { ...p, sid, at } satisfies Progress)
+  return true
 }
 
-// 自動交接（/clear 之後把 handoff 送進新對話）：這個 session 的進度備忘不再提供；on=false 還原。
+// 自動交接（/clear 之後把 handoff 送進新對話）：這個 session 的進度備忘與狀態卡不再提供；on=false 還原。
 // 進度只是附帶的，失敗不影響交接
 async function markHanded($: EngineInterface, sid: string, on: boolean) {
   try {
     if (on) rt.handed.add(sid)
     else rt.handed.delete(sid)
     const p = await loadProgress($)
-    if (p?.sid !== sid) return
-    const { handed: _h, ...rest } = p
-    await $.store.set(await progressKeyOf($), on ? { ...rest, handed: true as const } : rest)
+    if (p?.sid === sid) {
+      const { handed: _h, ...rest } = p
+      await $.store.set(await progressKeyOf($), on ? { ...rest, handed: true as const } : rest)
+    }
+    const c = await loadCardRec($)
+    if (c?.sid === sid) {
+      const { handed: _h, ...rest } = c
+      await $.store.set(await cardRecKey($), on ? { ...rest, handed: true as const } : rest)
+    }
   } catch {}
 }
 
-// 這段對話開頭要提供的進度：不是這個 session 留下的、一天內、沒被 handoff 取代、還沒提供給這個 session
+// 這段對話開頭要提供的「停在哪」：有狀態卡就讀卡片的狀態與下一步（檔案裡的卡片優先，使用者可能手改過；沒有檔案就用 store 那份），
+// 沒有卡片或不該提供時用進度備忘。條件相同：不是這個 session 留下的、一天內、沒被 handoff 取代、還沒提供給這個 session
 async function progressBlock($: EngineInterface) {
   if (!cfg.resumeHint) return undefined
   const p = await loadProgress($)
   const sid = await $.session.id()
-  const text = progressOffer(p, sid, await $.clock.now())
+  const now = await $.clock.now()
+  if (cfg.card) {
+    const rec = await loadCardRec($)
+    if (rec && canOffer(rec, sid, now)) {
+      const f = (await fileCard($)) ?? rec
+      const body = [f.status && `狀態：${f.status}`, f.next && `下一步：${f.next}`].filter(Boolean).join('；')
+      if (body) {
+        await $.store.set(await cardRecKey($), withOffered(rec, sid))
+        // 同一段對話不要再從進度備忘提供一次
+        if (p) await $.store.set(await progressKeyOf($), withOffered(p, sid))
+        return offerText(now - rec.at, body)
+      }
+    }
+  }
+  const text = progressOffer(p, sid, now)
   if (!text || !p) return undefined
   await $.store.set(await progressKeyOf($), withOffered(p, sid))
   return text
 }
 
-// ---------- 放進專案 ----------
-const promoteKey = async ($: EngineInterface) => `promote:${await projectKey($)}`
-const loadAsked = async ($: EngineInterface) => ((await $.store.get(await promoteKey($))) as Record<string, PromoteAsk> | undefined) ?? {}
+// ---------- 對話檔尾端：session 摘要（B3）與快取 TTL（B6） ----------
+// 摘要和 TTL 都從這個 session 對話檔（JSONL）的最後 64 KB 算：$.fs.read 超過 4 MiB 讀不了，
+// 大檔改用指令讀尾端（tail，Windows 沒有就用 PowerShell）。路徑和修改時間、大小都沒變就用快取
 
-// 這段對話開頭要交代的：session 啟動資料夾是 git repo 才交代
-async function promoteBlock($: EngineInterface, notes: Notes) {
-  if (rt.promoteTool === undefined) return undefined
-  const root = slash(await $.session.root())
-  if (!(await $.fs.exists(`${root}/.git`))) return undefined
-  const asked = await loadAsked($)
-  const now = await $.clock.now()
-  const items = promoteItems(await loadGuards($), notes, asked, now)
-  if (items.length === 0) return undefined
-  markAsked(asked, items, now)
-  await $.store.set(await promoteKey($), asked)
-  return promoteText(items, rt.promoteTool)
+async function transcriptCandidates($: EngineInterface) {
+  const sid = await $.session.id()
+  const out: string[] = []
+  if (rt.transcript?.sid === sid) out.push(rt.transcript.path)
+  // 對話檔在「session 啟動資料夾」編碼出來的目錄（不是主工作樹），檔名是 session id
+  out.push(`${await claudeDir($)}/projects/${encodeProject(await $.session.root())}/${sid}.jsonl`)
+  return out
 }
 
-// AI 回報放進 repo 的結果：記進經驗檔與守門，回給 AI 一段結果
-async function markInProject($: EngineInterface, raw: unknown) {
-  const file = await notesFile($)
-  const notes = parseNotes(await readText($, file))
-  const guards = await loadGuards($)
-  const asked = await loadAsked($)
-  const { done, failed, notesChanged, guardsChanged } = applyInProject(raw, notes, guards, asked)
-  if (notesChanged) await $.fs.write(file, renderNotes(notes, localStamp(await $.clock.now())))
-  if (guardsChanged) await $.store.set(await guardsKey($), guards)
-  if (notesChanged || guardsChanged) await $.store.set(await promoteKey($), asked)
-  await refreshPanel($)
-  return promoteReport(done, failed)
+// 讀檔案尾端 bytes 個位元組；cut＝前面還有被切掉的部分（第一行可能不完整）
+async function readTail($: EngineInterface, path: string, size: number, bytes: number): Promise<{ text: string; cut: boolean } | undefined> {
+  const want = Math.min(bytes, size)
+  if (size <= FS_READ_LIMIT) {
+    const all = await $.fs.read(path)
+    return all.length > want ? { text: all.slice(-want), cut: true } : { text: all, cut: false }
+  }
+  const attempts: { argv: string[]; env?: Record<string, string> }[] = [
+    { argv: ['tail', '-c', String(want), path] },
+    { argv: ['powershell', '-NoProfile', '-NonInteractive', '-Command', PS_TAIL], env: { CTXH_PATH: path, CTXH_BYTES: String(want) } },
+  ]
+  for (const a of attempts) {
+    try {
+      const r = await $.process.run(a.argv, { timeoutMs: 20_000, ...(a.env ? { env: a.env } : {}) })
+      if (r.exitCode === 0 && r.stdout) return { text: r.stdout, cut: true }
+    } catch {}
+  }
+  return undefined
+}
+// PowerShell 讀檔案最後 CTXH_BYTES 位元組，原樣寫到 stdout
+const PS_TAIL = '$f=[IO.File]::Open($env:CTXH_PATH,"Open","Read","ReadWrite");try{$n=[int]$env:CTXH_BYTES;if($n -gt $f.Length){$n=[int]$f.Length};[void]$f.Seek(-$n,"End");$b=New-Object byte[] $n;$r=0;while($r -lt $n){$k=$f.Read($b,$r,$n-$r);if($k -le 0){break};$r+=$k};$o=[Console]::OpenStandardOutput();$o.Write($b,0,$r);$o.Flush()}finally{$f.Close()}'
+
+async function sessionDigest($: EngineInterface): Promise<Digest> {
+  try {
+    for (const path of await transcriptCandidates($)) {
+      let st: Awaited<ReturnType<EngineInterface['fs']['stat']>>
+      try { st = await $.fs.stat(path) } catch { continue }
+      if (st.kind !== 'file') continue
+      const c = rt.digestCache
+      if (c && c.path === path && c.mtimeMs === st.mtimeMs && c.size === st.size) return c.digest
+      let best: Digest | undefined
+      for (const bytes of [TAIL_BYTES, TAIL_BYTES_WIDE]) {
+        const tail = await readTail($, path, st.size, bytes)
+        if (!tail) break
+        best = digestOf(parseTail(tail.text, tail.cut))
+        // 64 KB 裡湊得出內容、TTL 和使用者的要求就夠；否則放大一次。整個檔案都讀了就不用再放大
+        if ((hasContent(best) && best.ttl.kind !== 'unknown' && best.task) || !tail.cut) break
+      }
+      if (best && (hasContent(best) || best.ttl.kind !== 'unknown')) {
+        // 尾端沒有使用者的要求（被長長的工具輸出擠掉了）：目前工作改從訊息列取最後一則
+        if (!best.task) best = { ...best, task: digestOfRows((await $.session.messages()) as readonly Row[]).task }
+        rt.digestCache = { path, mtimeMs: st.mtimeMs, size: st.size, digest: best }
+        return best
+      }
+    }
+  } catch {}
+  // 對話檔讀不到（沒有 stat／指令可用、檔案不存在）：用 $.session.messages() 的列湊，沒有時間與 TTL
+  return digestOfRows((await $.session.messages()) as readonly Row[])
+}
+
+// ---------- 狀態卡（B1、B4）：專案 _HANDOFF.md 裡 ctx-handoff 標記之間的一段（純函式在 card.ts） ----------
+// store 裡永遠留一份（沒有 _HANDOFF.md 時只有這份）；檔案存在時以檔案裡的卡片為準（使用者可能手改過卡片裡的字）
+
+const cardRecKey = async ($: EngineInterface) => cardKey(await projectKey($))
+const loadCardRec = async ($: EngineInterface) => (await $.store.get(await cardRecKey($))) as Card | undefined
+const cardFilePath = async ($: EngineInterface) => `${await workspace($)}/${CARD_FILE}`
+const fieldsOf = (c: CardFields): CardFields => ({ status: c.status, running: c.running, waiting: c.waiting, next: c.next, verified: c.verified, failed: c.failed, decisions: c.decisions })
+const sameFields = (a: CardFields, b: CardFields) => JSON.stringify(fieldsOf(a)) === JSON.stringify(fieldsOf(b))
+const kTokens = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : String(n))
+
+// 檔案裡的卡片（沒有檔案、沒有標記、標記壞掉都回 undefined）
+async function fileCard($: EngineInterface) {
+  try {
+    const file = await cardFilePath($)
+    if (!(await $.fs.exists(file))) return undefined
+    const found = findCard(await readText($, file))
+    return found && found !== 'broken' ? parseCard(found.text) : undefined
+  } catch {
+    return undefined
+  }
+}
+
+// 讀檔案文字並保留開頭的 BOM：用位元組讀再自己解碼（$.fs.read 的文字模式會不會吃掉 BOM 沒有驗證過）；用不了就退回文字模式
+async function readKeepBom($: EngineInterface, path: string) {
+  const g = globalThis as { atob?: (s: string) => string; TextDecoder?: new (label?: string) => { decode: (b: Uint8Array) => string } }
+  try {
+    const r = await $.fs.read(path, { as: 'bytes' })
+    if (typeof r === 'string') return r
+    if (g.atob && g.TextDecoder) {
+      const bin = g.atob(r.base64)
+      const bytes = new Uint8Array(bin.length)
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+      // BOM 自己認自己補：不同執行環境的 TextDecoder 對 BOM 的處理不一樣（ignoreBOM 在測試環境實測沒有保留）
+      const bom = bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf
+      const body = new g.TextDecoder('utf-8').decode(bom ? bytes.subarray(3) : bytes)
+      return bom ? `\ufeff${body}` : body
+    }
+  } catch {}
+  return $.fs.read(path)
+}
+
+type PutOutcome = { kind: 'written'; rev: number } | { kind: 'nofile' | 'broken' | 'backup' | 'conflict' | 'error' }
+
+// 把卡片寫進 _HANDOFF.md，絕不蓋掉使用者的修改：讀檔與修改時間 → 組新內容 → 第一次寫之前備份 →
+// 寫之前再量一次修改時間與大小，變了就重讀重組（只重試一次），還是變了就放棄。標記以外的內容原樣保留
+async function putCard($: EngineInterface, file: string, fields: CardFields, sid: string, at: number, recRev: number): Promise<PutOutcome> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (!(await $.fs.exists(file))) return { kind: 'nofile' }
+    const before = await $.fs.stat(file)
+    const text = await readKeepBom($, file)
+    const found = findCard(text)
+    if (found === 'broken') return { kind: 'broken' }
+    const rev = Math.max(found?.rev ?? 0, recRev) + 1
+    const next = applyCard(text, renderCard(fields, { at, sid, rev }))
+    if ('error' in next) return { kind: 'broken' }
+    const backed = `${sid}|${file}`
+    if (!rt.cardBacked.has(backed)) {
+      try { await $.fs.write(`${file.slice(0, file.lastIndexOf('/'))}/.ctx-handoff-backup/${CARD_FILE}.bak`, text) } catch { return { kind: 'backup' } }
+      rt.cardBacked.add(backed)
+    }
+    const after = await $.fs.stat(file)
+    if (after.mtimeMs !== before.mtimeMs || after.size !== before.size) continue
+    await $.fs.write(file, next.text)
+    return { kind: 'written', rev }
+  }
+  return { kind: 'conflict' }
+}
+
+type CardJob = { sid: string; digest: Digest; source: { kind: 'handoff'; text: string } | { kind: 'progress'; p: ProgressFields } }
+
+// 更新排成一串，同時只有一個在讀寫檔；失敗只記錄，不影響呼叫的流程
+function queueCard($: EngineInterface, job: CardJob): Promise<void> {
+  if (!cfg.card) return Promise.resolve()
+  // 同步標記：之後才輪到的進度備忘更新看到它就略過（handoff 摘要的內容比較完整）
+  if (job.source.kind === 'handoff') rt.cardFromHandoff.add(job.sid)
+  const run = rt.cardChain.then(() => runCard($, job)).catch(err => { try { $.ui.log(t().card.failedLog(String(err))) } catch {} })
+  rt.cardChain = run
+  return run
+}
+
+async function runCard($: EngineInterface, job: CardJob) {
+  if (job.source.kind === 'progress' && rt.cardFromHandoff.has(job.sid)) return
+  const file = await cardFilePath($)
+  const rec = await loadCardRec($)
+  const exists = await $.fs.exists(file)
+  const inFile = exists ? await fileCard($) : undefined
+  const prev: CardFields = inFile ?? (rec ? fieldsOf(rec) : emptyFields())
+  const source = job.source.kind === 'handoff'
+    ? { label: 'handoff 摘要', text: job.source.text }
+    : { label: '進度備忘（set_progress）', text: progressBody(job.source.p) }
+  // 卡片文字由設定的模型用低 effort 一次請求產生：輸入只有上一版卡片、session 摘要和這次的來源，不送整段對話。失敗就直接從來源填
+  let fields: CardFields | undefined
+  let reason = ''
+  try {
+    const r = await $.model.complete({
+      model: cfg.cardModel || cfg.notesModel,
+      effort: CARD_EFFORT,
+      maxTokens: CARD_MAX_TOKENS,
+      timeoutMs: CARD_TIMEOUT_MS,
+      system: cardPrompt(),
+      prompt: cardInput(prev, digestLines(job.digest, DIGEST_LABELS_ZH).join('\n'), source.label, source.text),
+    })
+    if (r.isAnswered) {
+      fields = parseCardReply(r.text, prev)
+      if (!fields) reason = 'format'
+    } else {
+      reason = r.reason
+    }
+  } catch (err) {
+    reason = String(err)
+  }
+  const byModel = fields !== undefined
+  if (!fields) {
+    $.ui.log(t().card.modelFailedLog(reason))
+    fields = job.source.kind === 'handoff' ? cardFromHandoff(job.source.text, prev) : cardFromProgress(job.source.p, prev)
+  }
+  // 內容沒變就不重寫（版次、時間不動）
+  if ((inFile || (!exists && rec)) && sameFields(fields, prev)) return
+  const at = await $.clock.now()
+  let rev = (rec?.rev ?? 0) + 1
+  if (exists) {
+    const out = await putCard($, file, fields, job.sid, at, rec?.rev ?? 0).catch((err): PutOutcome => {
+      $.ui.toast(t().card.writeFailedToast(String(err)))
+      return { kind: 'error' }
+    })
+    if (out.kind === 'written') {
+      rev = out.rev
+      rt.cardWarned.clear()
+      $.ui.log(t().card.writtenLog(file, rev, byModel))
+    } else if (out.kind === 'nofile') {
+      $.ui.log(t().card.storedLog(rev))
+    } else if (out.kind !== 'error') {
+      // 寫不進去：toast 說原因（同一個原因只說一次，免得每次更新都跳），紀錄每次都留
+      const text = out.kind === 'conflict' ? t().card.conflictToast(file) : out.kind === 'broken' ? t().card.brokenToast(file) : t().card.backupFailedToast(file)
+      $.ui.log(text)
+      if (!rt.cardWarned.has(out.kind)) { rt.cardWarned.add(out.kind); $.ui.toast(text) }
+    }
+  } else {
+    $.ui.log(t().card.storedLog(rev))
+  }
+  await $.store.set(await cardRecKey($), { ...fields, at, sid: job.sid, rev, ...(rt.handed.has(job.sid) ? { handed: true as const } : {}) } satisfies Card)
+}
+
+// 交接產生之後更新卡片：摘要要在 /clear 之前讀好（之後 $.session 已經是新對話）
+async function cardAfterHandoff($: EngineInterface, handoff: string, sid: string) {
+  if (!cfg.card) return
+  rt.cardFromHandoff.add(sid)
+  const digest = await sessionDigest($)
+  await queueCard($, { sid, digest, source: { kind: 'handoff', text: handoff } })
+}
+
+// /handoff card：顯示位置與內容；init 建立 _HANDOFF.md（只有標題和卡片）
+async function cardCommand($: EngineInterface, arg: string) {
+  if (arg === 'init') return cardInit($)
+  if (arg !== '') return { text: t().card.usage }
+  const rec = await loadCardRec($)
+  const inFile = await fileCard($)
+  const shown = inFile ?? rec
+  const lines = [await cardStatus($)]
+  if (shown && (shown.status || shown.next)) {
+    lines.push(renderCard(inFile ?? fieldsOf(rec as Card), { at: rec?.at ?? 0, sid: rec?.sid ?? '', rev: rec?.rev ?? 0 }))
+  } else if (cfg.card) {
+    lines.push(t().card.showEmpty)
+  }
+  return { text: lines.join('\n') }
+}
+
+async function cardInit($: EngineInterface) {
+  if (!cfg.card) return { text: t().card.initOff }
+  const file = await cardFilePath($)
+  if (await $.fs.exists(file)) return { text: t().card.initExists(file) }
+  const rec = await loadCardRec($)
+  const sid = await $.session.id()
+  const at = await $.clock.now()
+  const rev = (rec?.rev ?? 0) + 1
+  const fields = rec ? fieldsOf(rec) : emptyFields()
+  await $.fs.write(file, newCardFile(renderCard(fields, { at, sid, rev })))
+  await $.store.set(await cardRecKey($), { ...fields, at, sid, rev, ...(rec?.offered ? { offered: rec.offered } : {}) } satisfies Card)
+  return { text: t().card.initCreated(file) }
+}
+
+// /handoff 狀態裡的一行：狀態卡在哪（檔案或只在 store）、第幾版、何時更新
+async function cardStatus($: EngineInterface) {
+  if (!cfg.card) return t().card.off
+  const rec = await loadCardRec($)
+  const inFile = await fileCard($)
+  if (inFile) return t().card.inFile(await cardFilePath($), inFile.rev ?? rec?.rev ?? 0, inFile.updated.split(' · ')[0] ?? '')
+  if (rec) return t().card.stored(rec.rev, taipeiStamp(rec.at))
+  return t().card.none
+}
+
+// 快取 TTL 的一行（B6）
+async function ttlLine($: EngineInterface, digest: Digest) {
+  const { kind, at } = digest.ttl
+  if (kind === '1h') return t().digest.ttl1h(at === undefined ? '' : taipeiStamp(at))
+  if (kind === '5m') return t().digest.ttl5m(await isRefreshOn($))
+  return t().digest.ttlUnknown
+}
+
+// ---------- 壓縮（B7）與不可逆指令確認（B16） ----------
+
+// 壓縮之後 context 讀數可能還是壓縮前的（下一次回應才更新）：讀數比較靠近壓縮前，這次 Stop 不判斷交接。
+// 最多擋 3 次，讀數不再停在舊值（或讀不出壓縮前的數字）就解除
+function staleAfterCompact(tokens: number | undefined) {
+  const c = rt.compact
+  if (!c || tokens === undefined) return false
+  if (c.before !== undefined) {
+    const mid = c.after === undefined ? c.before : c.after + (c.before - c.after) / 2
+    if (tokens >= mid && c.stops < 3) { c.stops += 1; return true }
+  }
+  rt.compact = undefined
+  return false
+}
+
+// 沒有畫面可以問：-p 或 SDK（session.start 的 isInteractive 是 false），或目前沒有任何畫面；查不出來也當作沒有（寧可放行，排程工作不能卡住）
+async function noScreen($: EngineInterface) {
+  if (rt.interactive === false) return true
+  try { return (await $.session.surfaces()).length === 0 } catch { return true }
+}
+
+// 不可逆指令：有畫面就問「允許／拒絕」，拒絕或關掉對話框就擋下；沒有畫面照常執行並記一行。
+// 回傳要擋下的理由；這個函式自己出錯時放行
+async function commandGate($: EngineInterface, e: { tool: string }): Promise<string | undefined> {
+  if (!cfg.commandGuard) return undefined
+  try {
+    const raw = (e as { command?: unknown }).command
+    const hit = irreversible(e.tool, raw)
+    if (!hit) return undefined
+    const command = String(raw).replace(/\s+/g, ' ').trim()
+    const shown = command.length > 200 ? `${command.slice(0, 199)}…` : command
+    const m = t().cmdGuard
+    if (await noScreen($)) {
+      $.ui.log(m.headlessLog(e.tool, hit.label, shown))
+      return undefined
+    }
+    let answer: string | undefined
+    try {
+      answer = await $.ui.ask(m.question(e.tool, hit.label, shown), { options: [m.allow, m.deny], header: m.header })
+    } catch {
+      // 關掉對話框（或這時剛好沒有畫面）：視同拒絕
+    }
+    if (answer === m.allow) {
+      $.ui.log(m.allowedLog(e.tool, hit.label, shown))
+      return undefined
+    }
+    $.ui.toast(m.deniedToast(e.tool, hit.label))
+    return m.denied(hit.label)
+  } catch (err) {
+    try { $.ui.log(t().guard.checkFailed(String(err))) } catch {}
+    return undefined
+  }
 }
 
 function panelActions($: EngineInterface): PanelActions {
@@ -786,7 +1116,7 @@ function panelActions($: EngineInterface): PanelActions {
     suggest: () => run(async () => {
       if ((await read($, panelUi)).suggesting) return undefined
       await setUi(u => ({ ...u, suggesting: true }))
-      try { return (await suggestGuards($)).text.split('\n')[0]?.replace(``, '') }
+      try { return (await suggestGuards($)).text.split('\n')[0] }
       finally { await setUi(u => ({ ...u, suggesting: false })) }
     }),
     tab: tab => setUi(({ confirming: _c, note: _n, ...u }) => ({ ...u, tab })),
@@ -874,6 +1204,7 @@ export const register: Register = on => {
 
   on('session.start', async ($, e, next) => {
     await initLang($)
+    rt.interactive = e.isInteractive
     const description = t().start.description
     // 專案或使用者已有同名的 /handoff（例如自己的 skill）時，改用 /ctx-handoff
     try {
@@ -885,13 +1216,6 @@ export const register: Register = on => {
       } catch (err2) {
         $.ui.log(t().start.registerFailed(String(err2)))
       }
-    }
-    // 每次都註冊同一份定義：熱重載或重開 session（resume）時沒註冊，引擎會把工具撤掉（not_configured），
-    // 工具清單反而變了，AI 也沒得回報。延後載入的 MCP 工具中途加入只多一筆可用提示，不動快取前綴
-    try {
-      rt.promoteTool = (await $.tool.register({ name: PROMOTE_TOOL, description: PROMOTE_DESCRIPTION, inputSchema: PROMOTE_SCHEMA })).tool
-    } catch (err) {
-      $.ui.log(t().start.toolFailed(String(err)))
     }
     try {
       await showDistillStatus($)
@@ -929,15 +1253,16 @@ export const register: Register = on => {
     const out = await next(e)
     await initLang($)
     try {
-      const file = await notesFile($)
-      const notes = parseNotes(await readText($, file))
-      const text = contextText(notes, file, localStamp(await $.clock.now()).slice(0, 10))
-      const promote = await promoteBlock($, notes)
-      // 進度備忘出錯不影響經驗與放進專案的交代
+      // 經驗檔的內容預設不帶進對話（inject_notes 關）；進度備忘是另一份資料，照常提供
+      let text: string | undefined
+      if (cfg.injectNotes) {
+        const file = await notesFile($)
+        text = contextText(parseNotes(await readText($, file)), file, localStamp(await $.clock.now()).slice(0, 10))
+      }
+      // 進度備忘出錯不影響經驗
       const progress = await progressBlock($).catch(() => undefined)
       const blocks = [
         ...(text ? [{ name: 'ctxHandoffProject', text }] : []),
-        ...(promote ? [{ name: 'ctxHandoffPromote', text: promote }] : []),
         ...(progress ? [{ name: 'ctxHandoffProgress', text: progress }] : []),
       ]
       return blocks.length ? { ...out, blocks: [...out.blocks, ...blocks] } : out
@@ -946,12 +1271,36 @@ export const register: Register = on => {
     }
   })
 
+  // 壓縮（/compact、自動、plugin）：記下前後 token 數、跳 toast、重新開始閒置計時。
+  // precompute（事先算好、還沒生效）與子代理自己的壓縮不算
+  on('session.compact', async ($, e, next) => {
+    if (e.agentId !== undefined || e.trigger === 'precompute') return next(e)
+    let readBefore: number | undefined
+    try { readBefore = (await $.session.usage()).context.tokens } catch {}
+    const r = await next(e)
+    if (r.skip !== undefined) return r
+    try {
+      await initLang($)
+      const before = r.tokensBefore ?? readBefore
+      let after = r.tokensAfter
+      if (after === undefined) {
+        // 引擎沒記壓縮後的大小：讀數比壓縮前小才當真（回應還沒更新時讀到的是舊值）
+        const now = (await $.session.usage()).context.tokens
+        if (now !== undefined && before !== undefined && now < before) after = now
+      }
+      rt.compact = { before, after, stops: 0 }
+      if (before !== undefined) {
+        $.ui.toast(after === undefined ? t().compact.toastBefore(kTokens(before)) : t().compact.toast(kTokens(before), kTokens(after)))
+        $.ui.log(t().compact.log(kTokens(before), after === undefined ? '?' : kTokens(after)))
+      }
+      // 壓縮自己也是一次請求，快取從現在重新算
+      if (!rt.busy) { rt.refreshes = 0; await schedule($) }
+    } catch {}
+    return r
+  })
+
   // 守門：只有使用者核准（on）的才比對；hook 自己出錯時放行，不擋正常工作
   on('tool.call', async ($, e, next) => {
-    if (rt.promoteTool !== undefined && e.tool === rt.promoteTool) {
-      await initLang($)
-      return { result: await markInProject($, (e as { items?: unknown }).items) }
-    }
     let hit: Guard | undefined
     try {
       const text = inputText(e as Record<string, unknown>)
@@ -961,13 +1310,16 @@ export const register: Register = on => {
       $.ui.log(t().guard.checkFailed(String(err)))
     }
     await initLang($)
-    if (!hit) return watchCall(e, await next(e))
-    await recordHit($, hit.id)
-    const head = `${tag} ${t().guard.head(hit.id, hit.rule, hit.message)}`
-    if (hit.mode === 'deny') {
+    if (hit) await recordHit($, hit.id)
+    const head = hit ? `${tag} ${t().guard.head(hit.id, hit.rule, hit.message)}` : ''
+    if (hit?.mode === 'deny') {
       $.ui.toast(t().guard.denyToast(hit.id, e.tool, hit.rule))
       return { deny: `${head}\n${t().guard.denyHint(hit.id)}` }
     }
+    // 使用者核准的守門先比；通過了再看有沒有不可逆指令（Bash／PowerShell）
+    const blocked = await commandGate($, e)
+    if (blocked !== undefined) return { deny: blocked }
+    if (!hit) return watchCall(e, await next(e))
     const r = await next(e)
     return watchCall(e, r.deny === undefined ? { ...r, context: [...(r.context ?? []), head] } : r)
   })
@@ -1024,6 +1376,12 @@ export const register: Register = on => {
       return { ...out, block: reason }
     }
     try {
+      // 這個 session 的對話檔路徑（摘要與快取 TTL 讀它）：確認檔名是目前的 session id 才記
+      const tp = (e as { transcript_path?: unknown }).transcript_path
+      if (typeof tp === 'string' && tp) {
+        const sid = await $.session.id()
+        if (slash(tp).split('/').at(-1) === `${sid}.jsonl`) rt.transcript = { sid, path: slash(tp) }
+      }
       await onStop($, e)
     } catch (err) {
       $.ui.log(t().stop.stopFailed(String(err)))
@@ -1088,7 +1446,7 @@ export const register: Register = on => {
     }
     // 背景整理的差異：只有訊息真的進了對話才帶入並清掉
     // 回覆語言提醒也一樣：上一則回答不是目標語言的話，跟著這則訊息帶入
-    const pend = rt.pendingNotes.get(sid)
+    const pend = cfg.injectNotes ? rt.pendingNotes.get(sid) : undefined
     const reply = peekNext(rt.reply)
     if (!pend && reply.length === 0) return next(msg)
     const r = await next({ ...msg, context: [...(msg.context ?? []), ...(pend ? [noteBlock(pend.changes, pend.file)] : []), ...reply] })
@@ -1118,6 +1476,7 @@ export const register: Register = on => {
         return r
       }
       case 'panel': return togglePanel($)
+      case 'card': return cardCommand($, arg)
       default: return { text: `${t().cmd.unknown(sub)}\n${usageText()}` }
     }
   })
@@ -1129,9 +1488,11 @@ async function status($: EngineInterface) {
   const pk = await projectKey($)
   const list = ((await $.store.get(`handoffs:${pk}`)) as Saved[] | undefined) ?? []
   const herr = (await $.store.get(`handoff:error:${pk}`)) as HandoffError | undefined
+  const digest = await sessionDigest($)
   return statusText({
     tokens: context.tokens, window: context.window, refreshOn: await isRefreshOn($), away, last: list.at(-1), herr,
     distill: await distillStatus($), guards: await guardSummary($), progress: await progressStatus($), replyLang: await replyLangLabel($),
+    digest: digestLines(digest, t().digest), ttl: await ttlLine($, digest), card: await cardStatus($),
   })
 }
 

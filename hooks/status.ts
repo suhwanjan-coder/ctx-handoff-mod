@@ -1,6 +1,6 @@
 // /handoff 的狀態文字：交接、整理、守門各一段（純函式，不碰 $；資料由 register.ts 讀好傳進來）
 import { t } from './i18n'
-import { INJECT_MIN_COUNT, STALE_DAYS, inProject, memoryTiers } from './notes'
+import { INJECT_MIN_COUNT, STALE_DAYS, memoryTiers } from './notes'
 import type { Notes } from './notes'
 import { cfg, thresholdOf } from './config'
 import { rt } from './runtime'
@@ -17,6 +17,8 @@ type StatusInput = {
   progress?: string
   // 回覆語言提醒的現況（設定值與解析後的目標語言）
   replyLang: string
+  // session 摘要的四行、快取 TTL 一行、狀態卡一行
+  digest: string[]; ttl: string; card: string
 }
 
 export function statusText(s: StatusInput) {
@@ -35,7 +37,12 @@ export function statusText(s: StatusInput) {
     s.distill,
     s.guards,
     ...(s.progress ? [s.progress] : []),
+    s.card,
+    m.digest.head,
+    ...s.digest.map(l => `${m.ind}${l}`),
+    s.ttl,
     m.loops.status(cfg.retryNudge ? 'on' : 'off', cfg.doneCheck ? 'on' : 'off', s.replyLang),
+    m.cmdGuard.status(cfg.commandGuard ? 'on' : 'off'),
     '',
     usageText(),
   ].join('\n')
@@ -46,6 +53,8 @@ type DistillStatusInput = {
   file: string; notes: Notes; today: string
   // 上次整理之後的使用者訊息數
   since: number
+  // inject_notes：關著時狀態不說「帶入新對話」
+  inject: boolean
 }
 
 export function distillStatusText(s: DistillStatusInput) {
@@ -60,8 +69,8 @@ export function distillStatusText(s: DistillStatusInput) {
     ...(d ? [`${ind}${d.usage}`, ...d.changes.map(c => `${ind}${m.bullet}${c}`)] : []),
     ...(d?.rejected?.count ? [`${ind}${m.distillStatus.rejected(d.rejected.count, d.rejected.samples.join(m.slashList))}`] : []),
     ...(err && (!d || err.at >= d.at) ? [`${ind}${m.distillStatus.failed(new Date(err.at).toLocaleString(), err.why, err.reason)}`] : []),
-    `${ind}${m.distillStatus.notes(file, notes.memory.length, notes.rules.length, notes.rules.filter(r => r.count >= INJECT_MIN_COUNT).length)}`,
-    `${ind}${m.distillStatus.tiers(tiers.full, tiers.titles, tiers.archived, STALE_DAYS)}`,
-    ...(notes.procedures.length ? [`${ind}${m.distillStatus.procedures(notes.procedures.length, notes.procedures.filter(inProject).length)}`] : []),
+    `${ind}${m.distillStatus.notes(file, notes.memory.length, notes.rules.length, s.inject ? notes.rules.filter(r => r.count >= INJECT_MIN_COUNT).length : undefined)}`,
+    ...(s.inject ? [`${ind}${m.distillStatus.tiers(tiers.full, tiers.titles, tiers.archived, STALE_DAYS)}`] : []),
+    ...(notes.procedures.length ? [`${ind}${m.distillStatus.procedures(notes.procedures.length)}`] : []),
   ].join('\n')
 }

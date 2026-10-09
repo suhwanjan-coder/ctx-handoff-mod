@@ -56,8 +56,25 @@ const fresh = () => ({
   envVars: { USERPROFILE: 'C:\\Users\\u' } as Record<string, string>,
   // 面板存的設定（store 的 settings，還沒被 plugin 寫過時讀這份）；測試開始前或下一則訊息前改，模擬在面板設定過
   panelSettings: {} as Record<string, unknown>,
-  // settings.json 的 pluginConfigs["ctx-handoff@…"].options（clone 載入或 claude -p 時只有這個來源）
-  pluginOptions: {} as Record<string, unknown>,
+  // settings.json 的 pluginConfigs["ctx-handoff@…"].options（clone 載入或 claude -p 時只有這個來源）。
+  // 預設打開 inject_notes：正式預設是關的，這裡為了讓既有的「經驗帶入新對話」測試照舊；預設值本身由 config.test.ts 與 inject-notes 測試另外檢查
+  pluginOptions: { inject_notes: true } as Record<string, unknown>,
+  // 狀態卡的模型回覆（model.complete 的系統提示含「狀態卡」時用，不記進 forks）
+  cardReply: JSON.stringify({ status: '修好登入頁', running: '無', waiting: '無', next: '補 refresh token 的測試', verified: 'npm test：12 項通過', failed: ['直接改 cookie 沒用'], decisions: ['用 refresh token'] }),
+  // 狀態卡的模型請求失敗（回 aborted）
+  cardFails: false,
+  // 這些路徑的 fs.read 丟例外、fs.stat 回 5 MiB（模擬超過 $.fs.read 上限的大對話檔，尾端只能用指令讀）
+  bigFiles: new Set<string>(),
+  // 讀完這個路徑之後做的事（模擬讀檔和寫檔之間，使用者改了檔案）
+  afterRead: undefined as ((path: string) => void) | undefined,
+  // 位元組讀檔不能用（只回文字）：模擬 $.fs.read 的 bytes 模式或 atob／TextDecoder 不存在時的退路
+  textOnly: false,
+  // $.session.usage() 的 context.tokens 改成這個值（有 tokens 這個鍵就用，值可以是 undefined＝還沒有讀數）；沒設就用 world() 的 tokens
+  usage: {} as { tokens?: number | undefined },
+  // $.session.surfaces() 的回答：空陣列＝沒有畫面（-p）
+  surfaces: ['terminal'] as string[],
+  // 不可逆指令確認：對話框的回答（字串＝選了哪個；'dismiss'＝關掉對話框）
+  askAnswer: '拒絕' as string,
 })
 export const ctl = fresh()
 
@@ -96,12 +113,23 @@ export const world = (on: On, tokens: number, window = 1_000_000, store: Record<
   on('config.set', (_$, e: { key: string; value: unknown }) => ({ value: e.value }) as never)
   on('session.id', () => ({ value: ctl.curSid }))
   on('session.turns', () => ({ value: turnsOf() }))
-  on('session.usage', () => ({ value: { startedAt: 0, context: { tokens, window }, rateLimits: [] } }))
+  on('session.usage', () => ({ value: { startedAt: 0, context: { tokens: 'tokens' in ctl.usage ? ctl.usage.tokens : tokens, window }, rateLimits: [] } }))
   on('session.repo', () => ({ value: ctl.curRepo }))
   on('session.root', () => ({ value: ctl.curRoot }))
   on('session.cwd', () => ({ value: ctl.curCwd }))
   // 工具本身：什麼都不做，只讓 tool.call 能走到本 plugin 的 hook
-  on('tool.call', (_$, e) => ctl.toolReply?.(e as { tool: string; command?: string }) ?? { result: 'ok' })
+  // 不可逆指令確認的對話框（$.ui.ask 是 AskUserQuestion 的 tool.call）：回答由 ctl.askAnswer 決定，'dismiss' 是關掉對話框
+  const asks: { question: string; header?: string; options: string[] }[] = []
+  on('tool.call', (_$, e) => {
+    const ev = e as { tool: string; command?: string; questions?: { question: string; header?: string; options: { label: string }[] }[] }
+    if (ev.tool === 'AskUserQuestion') {
+      const q = ev.questions?.[0]
+      asks.push({ question: q?.question ?? '', ...(q?.header ? { header: q.header } : {}), options: (q?.options ?? []).map(o => o.label) })
+      if (ctl.askAnswer === 'dismiss') return { isError: true, result: 'dismissed', text: 'dismissed' } as never
+      return { result: { answers: { [q?.question ?? '']: ctl.askAnswer } }, text: 'answered' } as never
+    }
+    return ctl.toolReply?.(ev) ?? { result: 'ok' }
+  })
   // 引擎會把路徑轉成原生格式（Windows 反斜線），比對前先統一成斜線。
   // POSIX 上引擎把 C:/... 當相對路徑，前面接工作目錄（/w/C:/...）；測試資料用 Windows 路徑，所以去掉磁碟代號前面的部分；反過來，Windows 上引擎替 /home/... 這種 POSIX 路徑補上磁碟代號（C:/home/...），也去掉
   const norm = (p: string) => p.split(String.fromCharCode(92)).join('/').replace(/^.*?\/(?=[A-Za-z]:\/)/, '').replace(/^[A-Za-z]:(?=\/(?:home|opt)\/)/, '')
@@ -118,10 +146,40 @@ export const world = (on: On, tokens: number, window = 1_000_000, store: Record<
     return { value: [...names].map(([name, kind]) => ({ name, kind, size: 0, mtimeMs: 0, isLink: false })) }
   })
   const reads: string[] = []
-  on('fs.read', (_$, e: { path: string }) => {
+  // as: 'bytes' 回 { base64 }（本 plugin 讀 _HANDOFF.md 時用位元組讀，自己解碼以保留 BOM）；ctl.textOnly 時退回文字，模擬位元組模式不能用
+  on('fs.read', (_$, e: { path: string; as?: string }) => {
     reads.push(norm(e.path))
-    return files.has(norm(e.path)) ? { value: files.get(norm(e.path)) ?? '' } : { deny: 'missing' }
+    if (ctl.bigFiles.has(norm(e.path))) return { deny: 'file over 4 MiB' }
+    const found = files.has(norm(e.path))
+    const text = files.get(norm(e.path)) ?? ''
+    if (found) ctl.afterRead?.(norm(e.path))
+    if (!found) return { deny: 'missing' }
+    if (e.as === 'bytes' && !ctl.textOnly) {
+      let bin = ''
+      for (const b of new TextEncoder().encode(text)) bin += String.fromCharCode(b)
+      return { value: { base64: btoa(bin) } } as never
+    }
+    return { value: text }
   })
+  // 修改時間用內容的雜湊代替：內容變了時間就變，沒變就不變
+  const mtimeOf = (text: string) => { let h = 7; for (let i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) % 1_000_003; return 1_000 + h }
+  on('fs.stat', (_$, e: { path: string }) => {
+    const p = norm(e.path)
+    if (!files.has(p)) return { deny: 'ENOENT' }
+    const text = files.get(p) ?? ''
+    return { value: { kind: 'file' as const, size: ctl.bigFiles.has(p) ? 5 * 1024 * 1024 : new TextEncoder().encode(text).length, mtimeMs: mtimeOf(text), isLink: false } }
+  })
+  // 指令：只模擬 tail -c N <路徑>（讀對話檔尾端），其他都當作找不到指令
+  const procs: string[][] = []
+  on('process.run', (_$, e: { argv: readonly string[] }) => {
+    procs.push([...e.argv])
+    if (e.argv[0] === 'tail' && e.argv[1] === '-c') {
+      const text = files.get(norm(e.argv[3] ?? '')) ?? ''
+      return { value: { exitCode: 0, stdout: text.slice(-Number(e.argv[2])), stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    }
+    return { deny: 'spawn ENOENT' }
+  })
+  on('session.surfaces', () => ({ value: ctl.surfaces as never }))
   const writes: string[] = []
   on('fs.write', (_$, e: { path: string; text: string }) => {
     writes.push(norm(e.path))
@@ -141,7 +199,13 @@ export const world = (on: On, tokens: number, window = 1_000_000, store: Record<
     return { value: { isAnswered: true as const, text, usage: usage(tokens) } }
   })
   // 背景整理走 model.complete：記進同一個 forks 清單（系統提示＋訊息），測試照舊比對內容與次數
+  const cards: { model: string; effort?: string; system?: string; prompt: string }[] = []
   on('model.complete', async (_$, e: { model: string; effort?: string; system?: string; prompt: string; timeoutMs?: number }) => {
+    if (e.system?.includes('維護「狀態卡」')) {
+      cards.push(e)
+      if (ctl.cardFails) return { value: { isAnswered: false as const, reason: 'aborted' as const, usage: usage(0) } }
+      return { value: { isAnswered: true as const, text: ctl.cardReply, usage: usage(0) } }
+    }
     completes.push(e)
     forks.push(`${e.system ?? ''}\n${e.prompt}`)
     // timeoutMs 由引擎計時；ctl.completeAborts 模擬到時回 aborted
@@ -159,7 +223,8 @@ export const world = (on: On, tokens: number, window = 1_000_000, store: Record<
     return ctl.takenCommands.has(e.name) ? { deny: `"/${e.name}" refused: it is the user's /${e.name}` } : { value: { command: e.name } }
   })
   on('session.start', (_$, e: { cwd: string }) => ({ cwd: e.cwd }))
-  on('tool.register', (_$, e: { name: string }) => ({ value: { tool: `mcp__ctx-handoff__${e.name}` } }) as never)
+  const tools: string[] = []
+  on('tool.register', (_$, e: { name: string }) => { tools.push(e.name); return { value: { tool: `mcp__ctx-handoff__${e.name}` } } as never })
   on('prompt.context', (_$, e) => ({ blocks: [...e.blocks] }))
   on('command.run', async (_$, e: { command: string }) => {
     commands.push(e.command)
@@ -184,7 +249,7 @@ export const world = (on: On, tokens: number, window = 1_000_000, store: Record<
     rows.push({ role: 'user', text: e.text ?? '', toolUses: [] })
     return { text: e.text ?? '', context: e.context }
   })
-  return { clock, forks, commands, submits, contexts, toasts, files, logs, get, put, reads, writes, completes, rows, statuses }
+  return { clock, forks, commands, submits, contexts, toasts, files, logs, get, put, reads, writes, completes, rows, statuses, cards, procs, asks, tools }
 }
 
 export const NOTE_TAG = '[ctx-handoff 專案經驗]'

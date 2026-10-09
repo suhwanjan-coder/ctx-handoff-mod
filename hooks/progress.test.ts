@@ -193,6 +193,8 @@ test('面板改 resume_hint：改回開啟後，下一則訊息起就提供', as
 
 test('使用者自己 /clear：session id 換了，剛整理出來的進度在新對話開頭提供', async ($, on) => {
   const w = world(on, 100_000, 1_000_000, {}, [], 5)
+  // 這個測試看的是進度備忘本身：關掉狀態卡（有狀態卡時開頭提供的是卡片，見 card.test.ts）
+  ctl.pluginOptions = { ...ctl.pluginOptions, card: false }
   ctl.distillReply = actionsReply(PROGRESS)
   await distillNow($)
   expect(await blockOf($)).toBeUndefined()
@@ -240,6 +242,8 @@ test('自動交接：整理慢，/clear 之後才跑完也不存進度', async (
 
 test('自動交接時 /clear 失敗：還原交接標記，之後開的新對話仍會提供', async ($, on) => {
   const w = world(on, 650_000, 1_000_000, {}, [], 5)
+  // 這個測試看的是進度備忘本身：關掉狀態卡（有狀態卡時開頭提供的是卡片，見 card.test.ts）
+  ctl.pluginOptions = { ...ctl.pluginOptions, card: false }
   ctl.distillReply = actionsReply(PROGRESS)
   ctl.onClear = () => { throw new Error('clear boom') }
   await stop($)

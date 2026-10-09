@@ -6,10 +6,36 @@ All notable changes to ctx-handoff. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-09
+
+A handoff now leaves a status card you can read at a glance, the mod no longer reaches into your repo, and Bash and PowerShell ask before running a command you can't undo.
+
+**Upgrading:** project notes are no longer put into conversations by default; turn on `inject_notes` on the panel's Settings tab to get the old behavior. The `mark_in_project` tool and the step that moved rules into your repo are gone. Nothing else needs doing.
+
 ### Added
 
+- **A status card in `_HANDOFF.md`:** after every handoff and whenever a notes update has progress, one block between `<!-- ctx-handoff:card rev=N -->` and `<!-- /ctx-handoff:card -->` is rewritten with the state, what's running, what waits for you, the next step, the last check, what didn't work and what was decided. Nothing outside the markers is touched, line endings and BOM are kept, the file is backed up before each session's first write, and a file that changed meanwhile is never overwritten. With no `_HANDOFF.md`, `/handoff card init` creates one. Settings: `card`, `card_model`.
+- **A session digest in `/handoff`:** current work, last activity, the last 3 tool calls and the last reply, read from the end of the conversation file and cached until it changes.
+- **The real cache lifetime:** the session's cache TTL (1 hour or 5 minutes) is read from the conversation file and shown in `/handoff`. A session that only writes the 5-minute cache skips the keep-warm request, which couldn't help, and saves an away summary instead.
+- **A compaction notice:** "Compacted 214k → 31k", the idle timer starts over, and an automatic handoff never acts on a context reading that is still the old one.
+- **A check before irreversible commands:** `rm -rf`, `git push --force`, `git reset --hard`, `DROP TABLE`, `npm publish` and the like, also inside `bash -c`, `sudo`, `xargs`, `powershell -Command` and `cmd /c`, ask Allow or Deny first. With no screen to ask on, such as `claude -p`, they run as before and a line is logged. Setting: `command_guard`.
 - **A new front page:** the README opens with a banner and an animated overview, shows each feature in a picture, and moves the details into a [guide](docs/guide.md).
 - **Changelog in Traditional Chinese:** `CHANGELOG.zh-TW.md`, and GitHub Releases carry both languages.
+
+### Changed
+
+- **Notes stay out of conversations by default:** the notes file is still kept and edited in the background, but its contents go into new conversations and your next message only when `inject_notes` is on.
+- **Where you left off reads the status card first:** a new conversation is told the card's state and next step (a line you fixed by hand counts), and falls back to the progress note.
+- **Every setting is declared in `plugin.json`:** `userConfig` listed only some of them before.
+- For contributors: the card, digest and command check are pure modules (`card.ts`, `digest.ts`, `cmdguard.ts`) with their own tests, `tools/manifest.test.mjs` keeps `plugin.json` and the settings in step, and the test world mocks `fs.stat`, `process.run` and the question dialog.
+
+### Removed
+
+- **Moving rules into your repo:** the `mark_in_project` tool, the instructions given at the start of a new conversation, and the "already in the repo" markers. ctx-handoff no longer writes `CLAUDE.md`, `AGENTS.md` or skill files.
+
+### Fixed
+
+- The panel's "draft guards" note ran a `replace` that did nothing.
 
 ## [0.5.0] - 2026-10-08
 
@@ -100,7 +126,8 @@ Notes stay in the project you started in, and updating them costs far less.
 
 First release: automatic handoff at a context threshold, keeping the cache warm while you're away with a saved handoff after that, and project notes.
 
-[unreleased]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.5.0...HEAD
+[unreleased]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.6.0...HEAD
+[0.6.0]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.5.0...ctx-handoff--v0.6.0
 [0.5.0]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.4.0...ctx-handoff--v0.5.0
 [0.4.0]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.3.0...ctx-handoff--v0.4.0
 [0.3.0]: https://github.com/cablate/ctx-handoff-mod/releases/tag/ctx-handoff--v0.3.0

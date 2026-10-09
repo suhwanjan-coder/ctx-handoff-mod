@@ -1,6 +1,6 @@
 {
   "name": "ctx-handoff",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Hands off to a fresh conversation when context fills up, keeps the cache warm while you're away, and turns what you teach Claude into project notes",
   "author": {
     "name": "CabLate",
@@ -36,7 +36,7 @@
     "idle_minutes": {
       "type": "number",
       "title": "Idle minutes before keeping the cache warm",
-      "description": "Minutes without activity before each keep-warm request. The cache lasts 60 minutes.",
+      "description": "Minutes without activity before each keep-warm request. The cache lasts 60 minutes. Skipped when the session only writes the 5-minute cache.",
       "default": 55,
       "min": 5,
       "max": 59
@@ -57,6 +57,14 @@
       "min": 0,
       "max": 500000
     },
+    "distill_every": {
+      "type": "number",
+      "title": "Messages between notes updates",
+      "description": "Update the project notes in the background after this many of your messages. Fewer is fresher but makes more requests.",
+      "default": 30,
+      "min": 5,
+      "max": 200
+    },
     "notes_model": {
       "type": "string",
       "title": "Model for project notes",
@@ -66,6 +74,62 @@
         "claude-opus-5-5"
       ],
       "default": "claude-sonnet-5-5"
+    },
+    "inject_notes": {
+      "type": "boolean",
+      "title": "Carry notes into new conversations",
+      "description": "Put the contents of the project notes file into new conversations and your next message. Off by default: notes stay in the file and the panel, and the background update still runs.",
+      "default": false
+    },
+    "card": {
+      "type": "boolean",
+      "title": "Status card in _HANDOFF.md",
+      "description": "After a handoff or when the background update has progress, update the status card between the ctx-handoff markers in the _HANDOFF.md of your project. With no such file the card is kept inside ctx-handoff only (/handoff card init creates it).",
+      "default": true
+    },
+    "card_model": {
+      "type": "string",
+      "title": "Model for the status card",
+      "description": "Model that writes the status card, at low effort. Empty means the same model as the notes.",
+      "default": ""
+    },
+    "resume_hint": {
+      "type": "boolean",
+      "title": "Tell new conversations where you stopped",
+      "description": "A new conversation in the same folder within a day is told where the last one stopped (from the status card, or the progress note).",
+      "default": true
+    },
+    "retry_nudge": {
+      "type": "boolean",
+      "title": "Nudge on repeated failure",
+      "description": "When a tool fails twice in a row for the same reason, ask Claude to change approach.",
+      "default": true
+    },
+    "done_check": {
+      "type": "boolean",
+      "title": "Check before done",
+      "description": "When Claude says done after editing code with no test or check, ask it to verify once.",
+      "default": true
+    },
+    "command_guard": {
+      "type": "boolean",
+      "title": "Confirm irreversible commands",
+      "description": "Ask before Bash or PowerShell runs rm -rf, git push --force, git reset --hard, DROP TABLE, npm publish and the like. With no screen to ask on (claude -p) the command runs as is and a line is logged.",
+      "default": true
+    },
+    "reply_language": {
+      "type": "string",
+      "title": "Reply language reminder",
+      "description": "Remind Claude once when its explanation is not in this language. auto follows Claude Code's language setting, off turns it off.",
+      "options": [
+        "auto",
+        "off",
+        "zh-TW",
+        "zh-CN",
+        "en",
+        "ja"
+      ],
+      "default": "auto"
     },
     "language": {
       "type": "string",

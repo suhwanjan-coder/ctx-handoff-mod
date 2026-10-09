@@ -36,7 +36,7 @@ const cells = (ch: string) => ((ch.codePointAt(0) ?? 0) >= 0x1100 ? 2 : 1)
 export function showSetting(key: string, v: number | boolean | string) {
   const m = t().panel
   if (typeof v === 'boolean') return v ? m.on : m.offValue
-  if (typeof v === 'string') return v
+  if (typeof v === 'string') return v === '' && key === 'card_model' ? m.sameModel : v
   if (key === 'idle_minutes') return m.minutes(v)
   return v >= 1000 ? `${v / 1000}k` : String(v)
 }
@@ -103,7 +103,7 @@ export function panelTree(ui: Elements, v: PanelView, act: PanelActions) {
               <Box flexGrow={1}>
                 <Text>
                   {badge(`● ${label}`, color)} <Text dimColor>{m.guardMeta(g.id, t().guard.mode[g.mode], g.hits)}</Text>{' '}
-                  {fit(g.rule, short - 24)}{g.project ? <Text dimColor> · {m.inProject(g.project)}</Text> : null}
+                  {fit(g.rule, short - 24)}
                 </Text>
               </Box>
               {g.state === 'on'
@@ -171,9 +171,11 @@ export function panelTree(ui: Elements, v: PanelView, act: PanelActions) {
     )
   }
 
+  // inject_notes 關著時，記憶只留在檔案與面板，提示不說會帶入新對話
+  const injectOn = v.settings.find(s => s.key === 'inject_notes')?.value === true
   const memoryTab = (
     <Box flexDirection="column">
-      <Text dimColor>{m.memoryHint(v.memory.length, v.memoryTotal)}</Text>
+      <Text dimColor>{injectOn ? m.memoryHint(v.memory.length, v.memoryTotal) : m.memoryHintOff(v.memory.length, v.memoryTotal)}</Text>
       {v.memory.map(m => memoryRow(m.head, m.detail, false))}
       {v.archived.length
         ? (
@@ -186,11 +188,11 @@ export function panelTree(ui: Elements, v: PanelView, act: PanelActions) {
     </Box>
   )
 
-  // 規則與流程同一種列：次數、名稱、已在哪；流程接在規則下面
-  const countRow = (prefix: 'r' | 'p', r: { name: string; count: number; project?: string }) => (
+  // 規則與流程同一種列：次數、名稱；流程接在規則下面
+  const countRow = (prefix: 'r' | 'p', r: { name: string; count: number }) => (
     <Box key={`${prefix}:${r.name}`}>
       <Box flexGrow={1}>
-        <Text>{badge(m.ruleCount(r.count).padStart(4), r.count >= 3 ? 'green' : r.count >= 2 ? ACCENT : 'gray')} {fit(r.name, short - 6 - (r.project ? m.inProject(r.project).length + 3 : 0))}{r.project ? <Text dimColor> · {m.inProject(r.project)}</Text> : null}</Text>
+        <Text>{badge(m.ruleCount(r.count).padStart(4), r.count >= 3 ? 'green' : r.count >= 2 ? ACCENT : 'gray')} {fit(r.name, short - 6)}</Text>
       </Box>
       {dropButtons(`${prefix}:${r.name}`)}
     </Box>

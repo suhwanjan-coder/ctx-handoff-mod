@@ -2,7 +2,7 @@
 import { t } from './i18n'
 import { PROGRESS_FIELD_MAX, PROGRESS_FILES_MAX, PROGRESS_FILE_MAX, PROGRESS_TASK_MAX, PROGRESS_TOTAL_MAX, isProgressState, progressSize } from './progress'
 import type { ProgressFields } from './progress'
-import { EVIDENCE_KEEP, NOTE_TAG, STALE_DAYS, inProject, isArchived, memHead, memOneLine, procBody, procOneLine, procRest, procSteps, procWhen, projectOf, ruleText, tag } from './notes'
+import { EVIDENCE_KEEP, NOTE_TAG, STALE_DAYS, isArchived, memHead, memOneLine, procBody, procOneLine, procRest, procSteps, procWhen, ruleText, tag } from './notes'
 import type { Change, Memory, Notes, Procedure, Rule } from './notes'
 
 // 記憶給人看：標題是一句結論，做法／理由各一句；根據給整理模型判斷用，不帶入新對話
@@ -26,8 +26,8 @@ export function distillPrompt(anchor: string | undefined, notes: Notes, day: str
   const mem = notes.memory.length
     ? notes.memory.map((m, i) => `M${i + 1} ${memOneLine(m)}${isArchived(m, day) ? `（已封存：超過 ${STALE_DAYS} 天沒被證實）` : ''}`)
     : ['（無）']
-  const rules = notes.rules.length ? notes.rules.map((r, i) => `R${i + 1} ${r.name}｜出現 ${r.count} 次｜${ruleText(r)}${inProject(r) ? `｜${projectOf(r)}（repo 裡的才是正本，不要 update_rule）` : ''}`) : ['（無）']
-  const procs = notes.procedures.length ? notes.procedures.map((p, i) => `P${i + 1} ${p.name}｜出現 ${p.count} 次｜${procOneLine(p)}${inProject(p) ? `｜${projectOf(p)}（repo 裡的才是正本，不要 update_procedure）` : ''}`) : ['（無）']
+  const rules = notes.rules.length ? notes.rules.map((r, i) => `R${i + 1} ${r.name}｜出現 ${r.count} 次｜${ruleText(r)}`) : ['（無）']
+  const procs = notes.procedures.length ? notes.procedures.map((p, i) => `P${i + 1} ${p.name}｜出現 ${p.count} 次｜${procOneLine(p)}`) : ['（無）']
   return [
     '你在背景整理使用者訊息裡附上的對話紀錄，目標是讓這個工作區之後的工作越做越好。你沒有工具，只輸出指定格式，由程式寫檔。',
     '用使用者在對話裡使用的語言撰寫（使用者寫中文就用繁體中文（台灣））；程式碼、指令、路徑、錯誤訊息與專有名詞維持原文。',
@@ -69,7 +69,7 @@ export function distillPrompt(anchor: string | undefined, notes: Notes, day: str
     `- 附上的對話有實際的工作進展（改了東西、跑了驗證、做了決定、遇到阻礙）才輸出一行 set_progress；只是閒聊、提問、查資料就不輸出，前一份進度會保留。每次最多一行，整份取代舊的。`,
     `- task：目前的任務，一句話（${PROGRESS_TASK_MAX} 字內）；state：done、in_progress、blocked 三選一；verified：最後一次實際驗證的結果，寫跑了什麼、結果如何（${PROGRESS_FIELD_MAX} 字內），沒驗證過就省略，不要猜；next：下一步，只寫一個動作（${PROGRESS_FIELD_MAX} 字內，done 可省略）；files：最相關的檔案路徑，最多 ${PROGRESS_FILES_MAX} 個。`,
     `- 全部加起來不超過 ${PROGRESS_TOTAL_MAX} 字，超過整行丟掉。`,
-    '四、流程：使用者在這個工作區讓 AI 重複做的多步驟固定做法，例如「發版：改版本號 → 更新 CHANGELOG → 打 tag → 建立 GitHub release」。累積夠多次後，程式會請 AI 把它做成專案的 skill。',
+    '四、流程：使用者在這個工作區讓 AI 重複做的多步驟固定做法，例如「發版：改版本號 → 更新 CHANGELOG → 打 tag → 建立 GitHub release」。只記下來供使用者在面板查看，不會寫進任何專案檔案。',
     `name 是一句話的標題（${PROC_NAME_MAX} 字以內）；when 一句話說明什麼時候用（${FIELD_MAX} 字以內）；steps 是 ${STEP_MIN} 到 ${STEP_MAX_COUNT} 步的字串陣列，照實際順序，每步一行短句（${STEP_MAX} 字以內），保留指令與檔名。`,
     '要很保守：只收同一種工作在這段對話裡被做了不只一次、或使用者明說「以後都照這個流程」，而且至少有 3 個步驟的固定做法。單一規則、偏好、一次性的任務、只是同一種工具呼叫重複，都不是流程（規則寫成規則，偏好寫成記憶）。',
     '和現有流程比對：同一種流程在這段對話又被做了一次，用 confirm_procedure 增加出現次數，不要新增；步驟有變才 update_procedure；不要寫出換句話說的重複流程。',
@@ -95,7 +95,8 @@ export function distillPrompt(anchor: string | undefined, notes: Notes, day: str
   ].join('\n')
 }
 
-const SECRETISH =/(sk-[A-Za-z0-9]|gh[pousr]_|xox[bp]-|AKIA[0-9A-Z]|-----BEGIN|password|passwd|api[_-]?key|token\s*[:=]|secret\s*[:=])/i
+const SECRETISH = /(sk-[A-Za-z0-9]|gh[pousr]_|xox[bp]-|AKIA[0-9A-Z]|-----BEGIN|password|passwd|api[_-]?key|token\s*[:=]|secret\s*[:=])/i
+export const looksSecret = (s: string) => SECRETISH.test(s)
 
 export const ACTIONS_START = '=== ACTIONS ==='
 export const ACTIONS_END = '=== END ==='

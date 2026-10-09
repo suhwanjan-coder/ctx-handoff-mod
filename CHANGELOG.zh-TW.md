@@ -6,10 +6,36 @@ ctx-handoff 每個版本值得注意的改動。格式依照 [Keep a Changelog](
 
 ## [未發布]
 
+## [0.6.0] - 2026-10-09
+
+交接之後多了一張一眼看得懂的狀態卡，mod 不再動你的 repo，Bash 與 PowerShell 要執行回不去的指令前會先問你。
+
+**升級注意：** 專案筆記預設不再帶進對話；要回到舊的行為，在面板的設定分頁打開 `inject_notes`。`mark_in_project` 工具和把規則放進你 repo 的那一步都拿掉了。其他不用做什麼。
+
 ### 新增
 
+- **`_HANDOFF.md` 裡的狀態卡：** 每次交接之後，以及背景整理有進度時，重寫 `<!-- ctx-handoff:card rev=N -->` 與 `<!-- /ctx-handoff:card -->` 之間的一塊：狀態、執行中的東西、等你回答的事、下一步、最後一次驗證、試過不行的做法與已定案的決定。標記以外一個字都不動，換行與 BOM 保持原樣，每個 session 第一次寫之前先備份，寫入前檔案被改過就不覆蓋。沒有 `_HANDOFF.md` 時，`/handoff card init` 會建立一個。設定：`card`、`card_model`。
+- **`/handoff` 裡的 session 摘要：** 目前工作、最後活動時間、最近 3 個工具呼叫與最後一句回覆，從對話檔尾端讀出，檔案沒變就用快取。
+- **真正的快取 TTL：** 從對話檔讀出這個 session 的快取 TTL（1 小時或 5 分鐘），顯示在 `/handoff`。只寫 5 分鐘快取的 session 會略過幫不上忙的保持快取請求，改存離席摘要。
+- **壓縮提示：** 「已壓縮 214k → 31k」，閒置計時重新開始，自動交接也不會拿還是壓縮前的 context 讀數判斷。
+- **不可逆指令的確認：** `rm -rf`、`git push --force`、`git reset --hard`、`DROP TABLE`、`npm publish` 這類指令，包在 `bash -c`、`sudo`、`xargs`、`powershell -Command`、`cmd /c` 裡面的也一樣，先問「允許」或「拒絕」。像 `claude -p` 這種沒有畫面可以問的環境，指令照常執行並留一行紀錄。設定：`command_guard`。
 - **新的首頁：** README 以 banner 和動畫概覽開場，每個功能配一張圖，細節移到[使用指南](docs/guide.zh-TW.md)。
 - **繁體中文更新紀錄：** `CHANGELOG.zh-TW.md`，GitHub Release 也同時附上兩種語言。
+
+### 變更
+
+- **筆記預設不帶進對話：** 筆記檔照樣在背景維護、可以編輯，但只有 `inject_notes` 打開時，內容才會帶進新對話和你的下一則訊息。
+- **「告訴新對話停在哪」先讀狀態卡：** 新對話會被告知卡片上的狀態與下一步（你手動改過的那一行也算），沒有卡片時用進度備忘。
+- **所有設定都宣告在 `plugin.json`：** 之前 `userConfig` 只列了一部分。
+- 給貢獻者：狀態卡、摘要與指令檢查都是純函式模組（`card.ts`、`digest.ts`、`cmdguard.ts`），各有測試；`tools/manifest.test.mjs` 讓 `plugin.json` 和設定保持一致；測試環境模擬 `fs.stat`、`process.run` 與詢問對話框。
+
+### 移除
+
+- **把規則放進你的 repo：** `mark_in_project` 工具、新對話開頭的交代，以及「已在 repo」的標記。ctx-handoff 不再寫 `CLAUDE.md`、`AGENTS.md` 或 skill 檔案。
+
+### 修正
+
+- 面板「提草稿」提示列裡有一個什麼都沒做的 `replace`。
 
 ## [0.5.0] - 2026-10-08
 
@@ -100,7 +126,8 @@ Claude 現在會注意到自己的小錯：重跑同一個失敗時提醒、沒�
 
 第一版：context 到門檻時自動交接、離開時保持快取並在之後存好交接摘要，以及專案筆記。
 
-[未發布]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.5.0...HEAD
+[未發布]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.6.0...HEAD
+[0.6.0]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.5.0...ctx-handoff--v0.6.0
 [0.5.0]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.4.0...ctx-handoff--v0.5.0
 [0.4.0]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.3.0...ctx-handoff--v0.4.0
 [0.3.0]: https://github.com/cablate/ctx-handoff-mod/releases/tag/ctx-handoff--v0.3.0
