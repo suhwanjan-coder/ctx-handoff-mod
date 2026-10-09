@@ -131,6 +131,7 @@ test('handoff：不帶參數顯示狀態和用法，不認得的子指令只回�
   expect(s.text).toContain('門檻')
   expect(s.text).toContain('/handoff now')
   expect(s.text).toContain('/handoff resend')
+  for (const alias of ['status', '狀態']) expect((await cmd($, alias)).text).toContain('門檻')
   const u = await cmd($, 'nwo')
   expect(u.text).toContain('不認得「nwo」')
   expect(w.forks.length).toBe(0)

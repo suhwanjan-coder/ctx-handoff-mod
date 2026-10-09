@@ -1510,7 +1510,9 @@ export const register: Register = on => {
     await initLang($)
     const [sub = '', arg = '', ...rest] = e.args.trim().split(/\s+/)
     switch (sub) {
-      case '': return { text: await status($) }
+      case '':
+      case 'status':
+      case '狀態': return { text: await status($) }
       case 'now': return handoffNow($)
       case 'dry': return handoffDry($)
       case 'distill': return distillCommand($, arg)
