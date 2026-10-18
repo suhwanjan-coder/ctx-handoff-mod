@@ -105,6 +105,35 @@ test('handoff resume：/clear 後送出 handoff 和被攔下的訊息', async ($
   expect(w.commands).toEqual(['clear'])
 })
 
+test('短指令 /hr 與 /handoff r：和 resume 一樣 /clear 後送出 handoff', async ($, on) => {
+  const w = world(on, 100_000, 1_000_000, { 'away:S1': { handoff: 'HANDOFF: 短', held: '我回來了' } })
+  await startSession($)
+  expect(ctl.registered).toEqual(['handoff', 'hc', 'hr'])
+  await $.command.run({ command: 'hr', args: '', origin: composer, presentation })
+  await w.clock.advance(0)
+  expect(w.commands).toEqual(['clear'])
+  expect(w.submits[0]).toContain('HANDOFF: 短')
+  w.put('away:S1', { handoff: 'HANDOFF: 短2' })
+  await cmd($, 'r')
+  await w.clock.advance(0)
+  expect(w.commands).toEqual(['clear', 'clear'])
+})
+
+test('短指令 /hc、/handoff c、/handoff 繼續：放棄離席 handoff，在舊對話送出攔下的訊息', async ($, on) => {
+  const w = world(on, 100_000, 1_000_000, { 'away:S1': { handoff: 'H', held: '第一則' } })
+  const r = await $.command.run({ command: 'hc', args: '', origin: composer, presentation })
+  await w.clock.advance(0)
+  expect(r.text).toBeDefined()
+  expect(w.get('away:S1')).toBeUndefined()
+  expect(w.commands).toEqual([])
+  expect(w.submits).toEqual(['第一則'])
+  for (const sub of ['c', '繼續']) {
+    w.put('away:S1', { handoff: 'H' })
+    await cmd($, sub)
+    expect(w.get('away:S1')).toBeUndefined()
+  }
+})
+
 test('子代理還在跑：延後 handoff', async ($, on) => {
   const w = world(on, 650_000, 1_000_000, {}, [{ id: 'a1', status: 'running' }])
   await stop($)
@@ -289,7 +318,7 @@ test('使用者已有 /handoff：改註冊 /ctx-handoff，指令照常可用，�
   const w = world(on, 100_000, 1_000_000, { 'last:OLD': 'x' })
   ctl.takenCommands = new Set(['handoff'])
   await startSession($)
-  expect(ctl.registered).toEqual(['handoff', 'ctx-handoff'])
+  expect(ctl.registered).toEqual(['handoff', 'ctx-handoff', 'hc', 'hr'])
   // 啟動時的 store 清理照跑：每 session 的鍵記進 seen
   expect((w.get('seen') as Record<string, number>)['last:OLD']).toBeDefined()
   const r = await $.command.run({ command: 'ctx-handoff', args: '', origin: composer, presentation })

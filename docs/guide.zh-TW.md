@@ -18,7 +18,7 @@ context 到 600k token（較小的視窗是 80%）時，會等 Claude 做完這�
 
 ### 離開時保持快取
 
-閒置約 55 分鐘後送一個很小的請求，讓對話快取不過期，最多 3 次（約 4 小時）。之後會存好交接摘要但不清空。你回來時，第一則訊息會先攔下讓你選：`/handoff resume` 用摘要開新對話，`/handoff continue` 留在原本的對話。
+閒置約 55 分鐘後送一個很小的請求，讓對話快取不過期，最多 3 次（約 4 小時）。之後會存好交接摘要但不清空。你回來時，第一則訊息會先攔下讓你選：`/handoff resume`（簡寫 `/hr`）用摘要開新對話，`/handoff continue`（簡寫 `/hc`）留在原本的對話；把同一則訊息原封不動再送一次，也等於留在原本的對話。
 
 ### 專案筆記
 
@@ -134,7 +134,7 @@ Bash 或 PowerShell 要執行回不去的指令前，會先問你「允許」或
 | `/handoff now` | 立刻交接（會清空對話） |
 | `/handoff dry` | 產生交接摘要並顯示花費，不清空 |
 | `/handoff distill` | 立刻整理專案筆記 |
-| `/handoff resume`／`continue` | 離開回來後：用摘要開新對話，或留在原對話 |
+| `/handoff resume`／`continue` | 離開回來後：用摘要開新對話，或留在原對話；簡寫 `/hr`／`/hc`，也可以打 `/handoff r`／`c` |
 | `/handoff resend` | 交接摘要沒送到時重送 |
 | `/handoff refresh on\|off`、`distill on\|off` | 開關保持快取或專案筆記 |
 | `/handoff card` | 顯示狀態卡在哪、寫了什麼；`card init` 建立 `_HANDOFF.md` |

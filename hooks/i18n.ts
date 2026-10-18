@@ -150,6 +150,8 @@ const zh = {
   // session 啟動
   start: {
     description: 'ctx-handoff: 狀態；now／dry／distill／resume／continue／resend／refresh on|off／distill on|off／card／guard／panel',
+    shortContinue: 'ctx-handoff: 放棄離席 handoff，留在舊對話（＝/handoff continue）',
+    shortResume: 'ctx-handoff: 用離席 handoff 開新對話接續（＝/handoff resume）',
     taken: (err: string) => `/handoff 已被佔用（${err}），改用 /ctx-handoff`,
     registerFailed: (err: string) => `指令註冊失敗：${err}`,
     resumeFailed: (err: string) => `接回閒置計時失敗：${err}`,
@@ -164,9 +166,9 @@ const zh = {
     dup: (wait: string, attach: string) => `正在交接（${wait}）。這則訊息先前已暫存，不會重複送出。${attach}`,
     held: (wait: string, attach: string) => `正在交接（${wait}），這則訊息已暫存，會在新對話一併送出。${attach}`,
     pendingToast: '有一份 handoff 沒送達，/handoff resend 重送',
-    awayAttach: '有一份離席 handoff，舊對話的快取已過期。圖片等附件無法暫存：請先 /handoff resume（開新對話）或 /handoff continue（留在舊對話），再重新貼上。',
+    awayAttach: '有一份離席 handoff，舊對話的快取已過期。圖片等附件無法暫存：請先 /hr（開新對話）或 /hc（留在舊對話），再重新貼上。',
     awayHeld: (hasAttach: boolean) =>
-      '有一份離席 handoff，舊對話的快取已過期。/handoff resume：開新對話接續，並帶上這則訊息；/handoff continue：在舊對話送出這則訊息（或直接再送一次）。' +
+      '有一份離席 handoff，舊對話的快取已過期。/hr：開新對話接續，並帶上這則訊息；/hc：在舊對話送出這則訊息（或直接再送一次）。' +
       (hasAttach ? '只暫存了文字，圖片等附件請在選擇後重新貼上。' : ''),
   },
 
@@ -272,8 +274,8 @@ const zh = {
       '　/handoff now              立刻產生 handoff 並 /clear',
       '　/handoff dry              試產一份 handoff，不 /clear',
       '　/handoff distill          立刻整理這個工作區的經驗',
-      '　/handoff resume           用離席 handoff 開新對話接續（會 /clear）',
-      '　/handoff continue         放棄離席 handoff，在舊對話送出被攔下的訊息',
+      '　/handoff resume           用離席 handoff 開新對話接續（會 /clear）；簡寫 /hr、/handoff r',
+      '　/handoff continue         放棄離席 handoff，在舊對話送出被攔下的訊息；簡寫 /hc、/handoff c',
       '　/handoff resend           重新送出沒送達的 handoff（不 /clear）',
       '　/handoff refresh on|off   開關閒置時的快取刷新',
       '　/handoff distill on|off   開關背景整理',
@@ -589,6 +591,8 @@ const en: Messages = {
 
   start: {
     description: 'ctx-handoff: status; now / dry / distill / resume / continue / resend / refresh on|off / distill on|off / card / guard / panel',
+    shortContinue: 'ctx-handoff: drop the away handoff and stay in the old conversation (= /handoff continue)',
+    shortResume: 'ctx-handoff: continue from the away handoff in a new conversation (= /handoff resume)',
     taken: err => `/handoff is already taken (${err}), using /ctx-handoff instead`,
     registerFailed: err => `could not register the command: ${err}`,
     resumeFailed: err => `could not restore the idle timer: ${err}`,
@@ -602,9 +606,9 @@ const en: Messages = {
     dup: (wait, attach) => `Handoff in progress (${wait}). This message is already held and will not be sent twice.${attach ? ` ${attach}` : ''}`,
     held: (wait, attach) => `Handoff in progress (${wait}). This message is held and will be sent in the new conversation.${attach ? ` ${attach}` : ''}`,
     pendingToast: 'A handoff was not delivered. Run /handoff resend to send it again',
-    awayAttach: 'There is an away handoff and the old conversation\'s cache has expired. Attachments cannot be held: run /handoff resume (new conversation) or /handoff continue (stay in the old one) first, then paste again.',
+    awayAttach: 'There is an away handoff and the old conversation\'s cache has expired. Attachments cannot be held: run /hr (new conversation) or /hc (stay in the old one) first, then paste again.',
     awayHeld: hasAttach =>
-      'There is an away handoff and the old conversation\'s cache has expired. /handoff resume: continue in a new conversation and include this message; /handoff continue: send this message in the old conversation (or just send it again).' +
+      'There is an away handoff and the old conversation\'s cache has expired. /hr: continue in a new conversation and include this message; /hc: send this message in the old conversation (or just send it again).' +
       (hasAttach ? ' Only the text was held. Paste images and other attachments again after you choose.' : ''),
   },
 
@@ -705,8 +709,8 @@ const en: Messages = {
       '  /handoff now              create a handoff and /clear now',
       '  /handoff dry              trial handoff, no /clear',
       '  /handoff distill          update this workspace\'s notes now',
-      '  /handoff resume           continue from the away handoff in a new conversation (does /clear)',
-      '  /handoff continue         drop the away handoff and send the held message in the old conversation',
+      '  /handoff resume           continue from the away handoff in a new conversation (does /clear); short: /hr, /handoff r',
+      '  /handoff continue         drop the away handoff and send the held message in the old conversation; short: /hc, /handoff c',
       '  /handoff resend           resend a handoff that did not arrive (no /clear)',
       '  /handoff refresh on|off   turn the idle cache refresh on or off',
       '  /handoff distill on|off   turn background notes on or off',

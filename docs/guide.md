@@ -18,7 +18,7 @@ The summary keeps apart what was verified (tests run, results seen) and what was
 
 ### Cache kept warm while you're away
 
-After about 55 idle minutes it sends a tiny request so the conversation cache doesn't expire, up to 3 times (about 4 hours). After that it saves a handoff summary but doesn't clear. When you come back, your first message is held and you choose: `/handoff resume` starts a new conversation from the summary, `/handoff continue` stays where you were.
+After about 55 idle minutes it sends a tiny request so the conversation cache doesn't expire, up to 3 times (about 4 hours). After that it saves a handoff summary but doesn't clear. When you come back, your first message is held and you choose: `/handoff resume` (short: `/hr`) starts a new conversation from the summary, `/handoff continue` (short: `/hc`) stays where you were; sending the same message again unchanged also stays where you were.
 
 ### Project notes
 
@@ -134,7 +134,7 @@ You won't need these in normal use. If `/handoff` is taken by your own command o
 | `/handoff now` | Hand off now (clears the conversation) |
 | `/handoff dry` | Show a handoff summary and its cost, without clearing |
 | `/handoff distill` | Update the project notes now |
-| `/handoff resume` / `continue` | After being away: start fresh from the summary, or stay |
+| `/handoff resume` / `continue` | After being away: start fresh from the summary, or stay; short: `/hr` / `/hc`, or `/handoff r` / `c` |
 | `/handoff resend` | Send the handoff summary again if it didn't arrive |
 | `/handoff refresh on\|off`, `distill on\|off` | Turn cache keeping or project notes on or off |
 | `/handoff card` | Show where the status card is and what it says; `card init` creates `_HANDOFF.md` |

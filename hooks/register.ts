@@ -1263,6 +1263,14 @@ export const register: Register = on => {
         $.ui.log(t().start.registerFailed(String(err2)))
       }
     }
+    // 短指令：/hc＝continue、/hr＝resume；被佔用就只記一筆，長寫法照常可用
+    for (const [name, description] of [['hc', t().start.shortContinue], ['hr', t().start.shortResume]] as const) {
+      try {
+        await $.command.register({ name, description })
+      } catch (err) {
+        $.ui.log(t().start.registerFailed(`/${name}: ${String(err)}`))
+      }
+    }
     try {
       await showDistillStatus($)
     } catch {}
@@ -1516,8 +1524,12 @@ export const register: Register = on => {
       case 'now': return handoffNow($)
       case 'dry': return handoffDry($)
       case 'distill': return distillCommand($, arg)
-      case 'resume': return resume($)
-      case 'continue': return keepOld($)
+      case 'resume':
+      case 'r':
+      case '接續': return resume($)
+      case 'continue':
+      case 'c':
+      case '繼續': return keepOld($)
       case 'resend': return resend($)
       case 'refresh': return refreshCommand($, arg)
       case 'guard': {
@@ -1529,6 +1541,15 @@ export const register: Register = on => {
       case 'card': return cardCommand($, arg)
       default: return { text: `${t().cmd.unknown(sub)}\n${usageText()}` }
     }
+  })
+
+  on('command.run', { command: 'hc' }, async $ => {
+    await initLang($)
+    return keepOld($)
+  })
+  on('command.run', { command: 'hr' }, async $ => {
+    await initLang($)
+    return resume($)
   })
 }
 
