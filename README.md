@@ -72,7 +72,7 @@ At 600k tokens it waits for Claude and its subagents to finish, writes a summary
 
 ### Learns your project
 
-Preferences, corrections and facts become one Markdown notes file per project, kept under `~/.claude/projects/` for you to read and edit. They stay out of your conversations unless you turn on `inject_notes`. Routines you repeat are noted as procedures. Only the new part of the conversation is read, by Sonnet 5.5 at low effort. ctx-handoff never writes `CLAUDE.md`, `AGENTS.md` or skill files in your project.
+Preferences, corrections and facts become one Markdown notes file per project, kept under `~/.claude/projects/` for you to read and edit. Git worktrees share the main working tree's notes, including on Windows. They stay out of your conversations unless you turn on `inject_notes`. Routines you repeat are noted as procedures. Only the new part of the conversation is read, by Sonnet 5.5 at low effort. ctx-handoff never writes `CLAUDE.md`, `AGENTS.md` or skill files in your project.
 
 ### Remembers where you stopped
 

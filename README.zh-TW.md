@@ -72,7 +72,7 @@ ctx-handoff 是持續成長的長時間工作工具箱：和 Claude 一起工作
 
 ### 學會你的專案
 
-偏好、修正與事實會整理成每個專案一份的 Markdown 筆記，放在 `~/.claude/projects/` 底下，你可以直接讀、直接改。預設不會帶進你的對話，要打開 `inject_notes` 才會。你重複做的流程會記成流程筆記。只讀新增的對話，用 Sonnet 5.5（effort low）整理。ctx-handoff 不會寫你專案裡的 `CLAUDE.md`、`AGENTS.md` 或 skill 檔案。
+偏好、修正與事實會整理成每個專案一份的 Markdown 筆記，放在 `~/.claude/projects/` 底下，你可以直接讀、直接改。Git worktree 共用主工作樹的筆記，Windows 也一樣。預設不會帶進你的對話，要打開 `inject_notes` 才會。你重複做的流程會記成流程筆記。只讀新增的對話，用 Sonnet 5.5（effort low）整理。ctx-handoff 不會寫你專案裡的 `CLAUDE.md`、`AGENTS.md` 或 skill 檔案。
 
 ### 記得你停在哪
 

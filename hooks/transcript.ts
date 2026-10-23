@@ -4,10 +4,15 @@ const TRANSCRIPT_MAX_CHARS = 300_000
 const TOOL_INPUT_CHARS = 300
 const TOOL_RESULT_CHARS = 500
 
-export const anchorOf = (text: string) => text.replace(/\s+/g, ' ').trim().slice(0, 30)
+// 上限沿用 UTF-16 長度，但邊界落在代理對中間時略過整個字，避免 UTF-8 編碼產生 U+FFFD。
+const sliceText = (s: string, start: number, end = s.length) => {
+  const splitPair = (i: number) => i > 0 && /[\uD800-\uDBFF]/.test(s[i - 1] ?? '') && /[\uDC00-\uDFFF]/.test(s[i] ?? '')
+  return s.slice(start + (splitPair(start) ? 1 : 0), end - (splitPair(end) ? 1 : 0))
+}
+export const anchorOf = (text: string) => sliceText(text.replace(/\s+/g, ' ').trim(), 0, 30)
 
 export type Row = { role: 'user' | 'assistant'; text: string; toolUses: readonly { tool: string; input: Record<string, unknown>; text?: string; isError?: true }[] }
-export const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…（截短，原長 ${s.length} 字）` : s)
+export const clip = (s: string, n: number) => (s.length > n ? `${sliceText(s, 0, n)}…（截短，原長 ${s.length} 字）` : s)
 
 // 上次整理到的錨點（使用者訊息開頭）之後的對話，轉成純文字；找不到錨點就用全部。
 // 工具呼叫只留名稱、截短的輸入與結果；太長時保留最新的部分
@@ -30,6 +35,9 @@ export function transcriptOf(rows: readonly Row[], anchor: string | undefined) {
     }
   }
   let text = lines.join('\n')
-  if (text.length > TRANSCRIPT_MAX_CHARS) text = `（前面省略 ${text.length - TRANSCRIPT_MAX_CHARS} 字）\n${text.slice(-TRANSCRIPT_MAX_CHARS)}`
+  if (text.length > TRANSCRIPT_MAX_CHARS) {
+    const tail = sliceText(text, text.length - TRANSCRIPT_MAX_CHARS)
+    text = `（前面省略 ${text.length - tail.length} 字）\n${tail}`
+  }
   return { text, found }
 }

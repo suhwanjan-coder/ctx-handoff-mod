@@ -178,10 +178,10 @@ async function readText($: EngineInterface, path: string) {
 // 不用 $.session.repo()：它依目前工作目錄判斷，會跟著 Bash 的 cd 變
 async function workspace($: EngineInterface) {
   const root = slash(await $.session.root())
-  const m = /^gitdir:\s*(.+?)\/\.git\/worktrees\/[^/]+\s*$/m.exec(slash(await readText($, `${root}/.git`)))
+  const m = /^gitdir:\s*(.+?\/)\.git\/worktrees\/[^/]+\s*$/m.exec(slash(await readText($, `${root}/.git`)))
   if (!m?.[1]) return root
   const main = slash(m[1])
-  return isAbs(main) ? main : resolveDots(`${root}/${main}`)
+  return resolveDots(isAbs(main) ? main : `${root}/${main}`)
 }
 
 // 經驗檔：<claude>/projects/<編碼後的工作區路徑>/memory/ctx-handoff.md；每個工作區只有這一份。

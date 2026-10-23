@@ -14,6 +14,10 @@ ctx-handoff 每個版本值得注意的改動。格式依照 [Keep a Changelog](
 
 - 離開回來時的短指令：`/hc` 等於 `/handoff continue`，`/hr` 等於 `/handoff resume`；也可以打 `/handoff c`、`/handoff r`。`/hc` 或 `/hr` 已被別的指令使用時，就略過那個短指令，長寫法照常可用。
 
+### 修正
+
+- **Windows 路徑與 Unicode：** 從磁碟根目錄啟動，或 worktree 路徑含點路徑、重複分隔符時，經驗檔會寫到正確資料夾；截短對話文字時不再切斷 emoji。
+
 ## [0.6.0] - 2026-10-09
 
 交接之後多了一張一眼看得懂的狀態卡，mod 不再動你的 repo，Bash 與 PowerShell 要執行回不去的指令前會先問你。
