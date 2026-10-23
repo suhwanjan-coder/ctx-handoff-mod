@@ -10,6 +10,10 @@ All notable changes to ctx-handoff. The format follows [Keep a Changelog](https:
 
 - Short commands for coming back after being away: `/hc` is `/handoff continue` and `/hr` is `/handoff resume`; `/handoff c` and `/handoff r` work too. If another command already uses `/hc` or `/hr`, that short name is skipped and the long form still works.
 
+### Fixed
+
+- **Windows paths and Unicode:** notes now use the correct folder when starting at a drive root or resolving worktree paths with dot segments or repeated separators; shortened conversation text keeps emoji intact.
+
 ## [0.6.0] - 2026-10-09
 
 A handoff now leaves a status card you can read at a glance, the mod no longer reaches into your repo, and Bash and PowerShell ask before running a command you can't undo.
