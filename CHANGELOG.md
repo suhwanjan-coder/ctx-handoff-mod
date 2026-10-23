@@ -10,6 +10,10 @@ All notable changes to ctx-handoff. The format follows [Keep a Changelog](https:
 
 - Short commands for coming back after being away: `/hc` is `/handoff continue` and `/hr` is `/handoff resume`; `/handoff c` and `/handoff r` work too. If another command already uses `/hc` or `/hr`, that short name is skipped and the long form still works.
 
+### Changed
+
+- **Clearer operating limits:** the guide now distinguishes manual notes updates from automatic limits, explains guard matching, status output, setting ranges and card-write limits, and corrects the handoff and request-cost descriptions.
+
 ## [0.6.0] - 2026-10-09
 
 A handoff now leaves a status card you can read at a glance, the mod no longer reaches into your repo, and Bash and PowerShell ask before running a command you can't undo.

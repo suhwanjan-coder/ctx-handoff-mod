@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/handoff.svg" width="900" alt="Animation: a long session fills its context to the threshold; ctx-handoff writes a summary of verified work, failed attempts, your limits and the next step, clears, and a fresh session continues from it">
+  <img src="docs/assets/handoff.svg" width="900" alt="Animation: a long session fills its context to the threshold; ctx-handoff writes a summary of verified work, failed attempts, your limits and the next step, clears, and a fresh session receives it and waits for instructions">
 </p>
 
 ## Why
@@ -30,7 +30,7 @@ Long Claude Code sessions run into the same chores again and again. ctx-handoff 
 
 | When… | Without it | With ctx-handoff |
 |---|---|---|
-| the conversation is nearly full | You write a summary, `/clear`, paste it back | A summary is written, the conversation is cleared, and a fresh one continues |
+| the conversation is nearly full | You write a summary, `/clear`, paste it back | A summary is written, the conversation is cleared, and a fresh one waits for your next instruction |
 | you step away for an hour | Your next message rereads everything at full price | The cache is kept warm for up to about 4 hours |
 | you repeat an instruction | The next conversation forgets it | It becomes a project note you can read and edit |
 | you `/clear` or reopen Claude Code | The new conversation starts blind | It's told where the last one stopped, from a status card in `_HANDOFF.md` |
@@ -64,7 +64,7 @@ ctx-handoff is a growing toolkit for long sessions: new features for working wit
 
 ### Hands off before the context fills
 
-At 600k tokens it waits for Claude and its subagents to finish, writes a summary that keeps verified work apart from unverified changes, lists what failed and the limits you set, ends with one next step, clears, and continues in a fresh conversation. Anything you type meanwhile is carried over.
+At 600k tokens (80% of smaller windows) it normally waits for Claude and its background work to finish, writes a summary that keeps verified work apart from unverified changes, lists what failed and the limits you set, ends with one next step, and clears. The fresh conversation reports its understanding and waits for your instructions; if you typed a message during handoff, it responds to that message instead. Text is carried over; attachments must be pasted again. The guide explains the limit on waiting for background work.
 
 ### Keeps the cache warm while you're away
 
@@ -72,7 +72,7 @@ At 600k tokens it waits for Claude and its subagents to finish, writes a summary
 
 ### Learns your project
 
-Preferences, corrections and facts become one Markdown notes file per project, kept under `~/.claude/projects/` for you to read and edit. They stay out of your conversations unless you turn on `inject_notes`. Routines you repeat are noted as procedures. Only the new part of the conversation is read, by Sonnet 5.5 at low effort. ctx-handoff never writes `CLAUDE.md`, `AGENTS.md` or skill files in your project.
+Preferences, corrections and facts become one Markdown notes file per project, kept under `~/.claude/projects/` for you to read and edit. They stay out of your conversations unless you turn on `inject_notes`. Routines you repeat are noted as procedures. With the previous update anchor, only the new part is read; if the anchor is missing, the whole conversation is used within the text limit. The default model is Sonnet 5.5 at low effort. ctx-handoff never writes `CLAUDE.md`, `AGENTS.md` or skill files in your project.
 
 ### Remembers where you stopped
 
@@ -80,7 +80,7 @@ Preferences, corrections and facts become one Markdown notes file per project, k
 
 ### Keeps a status card in `_HANDOFF.md`
 
-After each handoff, and whenever the background update has progress, the block between `<!-- ctx-handoff:card rev=N -->` and `<!-- /ctx-handoff:card -->` in your project's `_HANDOFF.md` is rewritten: state, what's running, what waits for you, the next step, the last check, what didn't work and what was decided. Everything outside the markers is left byte for byte as you wrote it, and the file is backed up before the first write of each session (the first copy ever is kept for good). No `_HANDOFF.md`? Nothing is created until you run `/handoff card init`.
+After each handoff, and whenever the background update has progress, the block between `<!-- ctx-handoff:card rev=N -->` and `<!-- /ctx-handoff:card -->` in your project's `_HANDOFF.md` is updated: state, what's running, what waits for you, the next step, the last check, what didn't work and what was decided. An unchanged card is not rewritten. Content outside the markers is preserved, subject to the encoding and write limits in the guide, and the file is backed up before the first write of each session (the first copy ever is kept for good). No `_HANDOFF.md`? Nothing is created until you run `/handoff card init`.
 
 ### Catches the usual slips
 
@@ -88,7 +88,7 @@ After each handoff, and whenever the background update has progress, the block b
 
 ### Asks before commands you can't undo
 
-When Bash or PowerShell is about to run `rm -rf`, `git push --force`, `git reset --hard`, `DROP TABLE`, `npm publish` or the like, you get an Allow or Deny question first. Denying, or closing the question, stops the command. In `claude -p`, where there is no screen to ask on, the command runs as before and a line is logged. If nobody answers for 120 seconds, or a scheduled task started the turn, it's denied instead. Setting: `command_guard`.
+When Bash or PowerShell is about to run `rm -rf`, `git push --force`, `git reset --hard`, `DROP TABLE`, `npm publish` or the like, you get an Allow or Deny question first. Denying, or closing the question, stops the command. In `claude -p`, where there is no screen to ask on, the command runs as before and a line is logged. With an interactive surface, no answer for 120 seconds or a scheduled task starting the turn means denial. Setting: `command_guard`.
 
 ### Guards you approve, one panel for everything
 
@@ -102,8 +102,8 @@ Everything is on the panel's Settings tab (`/handoff panel`, then <kbd>5</kbd>),
 
 ## Cost and privacy
 
-- **No servers of its own.** It runs on your Claude Code sign-in and sends nothing anywhere but Anthropic, like the conversation itself.
-- **Small, predictable costs.** A handoff is one request; a cache refresh reads from cache at about a tenth of the input price; a notes update sends only the new part of the conversation. The nudges cost nothing.
+- **No servers of its own.** Model requests go through Claude Code's configured provider, like the conversation itself; the mod has no separate network client.
+- **Costs follow the work.** A handoff summary is one request; notes and card updates can add additional requests. Cache refreshes use the current conversation; notes normally use only the new part, falling back to the bounded conversation text if the last anchor is missing. The nudges make no requests. The guide explains the limits.
 - **Plain files you own.** Notes are Markdown in `~/.claude/projects/`; the status card lives in your own `_HANDOFF.md`, between its markers only. Check what the mod may do with `claude plugin validate`; the [guide](docs/guide.md#cost-privacy-and-permissions) explains every entry.
 
 ## Documentation
