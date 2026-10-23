@@ -176,18 +176,21 @@ async function readText($: EngineInterface, path: string) {
 
 // 工作區：session 啟動的資料夾；從 git worktree 啟動時算主工作樹（.git 是檔案：gitdir: <主工作樹>/.git/worktrees/<名稱>）。
 // 不用 $.session.repo()：它依目前工作目錄判斷，會跟著 Bash 的 cd 變
-async function workspace($: EngineInterface) {
-  const root = slash(await $.session.root())
+async function workspace($: EngineInterface, native = false) {
+  const original = await $.session.root()
+  const root = slash(original)
   const m = /^gitdir:\s*(.+?\/)\.git\/worktrees\/[^/]+\s*$/m.exec(slash(await readText($, `${root}/.git`)))
-  if (!m?.[1]) return root
+  if (!m?.[1]) return native ? original : root
   const main = slash(m[1])
-  return resolveDots(isAbs(main) ? main : `${root}/${main}`)
+  const resolved = resolveDots(isAbs(main) ? main : `${root}/${main}`)
+  // slug 雜湊要用原生格式；其餘工作區鍵與檔案路徑維持統一斜線。
+  return native && original.includes('\\') ? resolved.replace(/\//g, '\\') : resolved
 }
 
 // 經驗檔：<claude>/projects/<編碼後的工作區路徑>/memory/ctx-handoff.md；每個工作區只有這一份。
 // 不寫 MEMORY.md：那是內建 auto memory 的索引，開啟 auto memory 時會被載入兩次、也會被它改寫
 async function notesFile($: EngineInterface) {
-  return `${await claudeDir($)}/projects/${encodeProject(await workspace($))}/memory/ctx-handoff.md`
+  return `${await claudeDir($)}/projects/${encodeProject(await workspace($, true))}/memory/ctx-handoff.md`
 }
 
 async function isDistillOn($: EngineInterface) {
