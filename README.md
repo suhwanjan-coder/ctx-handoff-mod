@@ -90,6 +90,8 @@ After each handoff, and whenever the background update has progress, the block b
 
 When Bash or PowerShell is about to run `rm -rf`, `git push --force`, `git reset --hard`, `DROP TABLE`, `npm publish` or the like, you get an Allow or Deny question first. Denying, or closing the question, stops the command. In `claude -p`, where there is no screen to ask on, the command runs as before and a line is logged. If nobody answers for 120 seconds, or a scheduled task started the turn, it's denied instead. Setting: `command_guard`.
 
+This includes `find -delete` and commands inside wrappers with nested quoted paths. A preview flag only exempts its own command, so a preview followed by a real deletion still asks. Simple `-WhatIf` deletion and disk-format previews do not ask; expressions with parentheses or braces are checked conservatively and may still ask. Quoted command text is deliberately scanned, including search patterns containing `rm -rf`.
+
 ### Guards you approve, one panel for everything
 
 `/handoff guard suggest` turns a rule that keeps coming up into a check on tool calls, and nothing applies until you approve it. `/handoff panel` opens a panel above the prompt for guards, memories, rules, the latest notes update and every setting.

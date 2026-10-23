@@ -6,6 +6,10 @@ ctx-handoff 每個版本值得注意的改動。格式依照 [Keep a Changelog](
 
 ## [未發布]
 
+### 修正
+
+- 不可逆指令確認現在能抓到巢狀引號裡的路徑、`find -delete` 和緊貼指令分隔符號的旗標。預演旗標只豁免自己的命令；引號裡名為 `-WhatIf` 的路徑、子運算式外面的旗標不再遮掉破壞性指令。`cargo rm`、`git -C repo rm` 和單純的 PowerShell 刪除或磁碟格式化預演不再多問。相鄰引號組成的長字串不再反覆掃描同一段前綴。
+
 ### 新增
 
 - 離開回來時的短指令：`/hc` 等於 `/handoff continue`，`/hr` 等於 `/handoff resume`；也可以打 `/handoff c`、`/handoff r`。`/hc` 或 `/hr` 已被別的指令使用時，就略過那個短指令，長寫法照常可用。
