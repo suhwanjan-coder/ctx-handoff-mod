@@ -57,3 +57,73 @@ for (const home of ['C:/Users/u', 'D:/使用者/乙']) test(`機器的家目錄�
   expect(content).not.toContain(home)
   expect(content).not.toContain(ctl.curRoot)
 })
+
+// 預期值取自 Claude Code 2.1.299 執行檔內的真實函式。
+test("長路徑編碼：原生路徑恰好 200 字元", () => {
+  expect(encodeProject("C:\\aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")).toBe("C--aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+})
+
+test("長路徑編碼：原生路徑 201 字元", () => {
+  expect(encodeProject("C:\\aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")).toBe("C--aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-8x5zet")
+})
+
+test("長路徑編碼：原生路徑 300 字元", () => {
+  expect(encodeProject("C:\\aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")).toBe("C--aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-lfvxy4")
+})
+
+test("長路徑編碼：正斜線 201 字元", () => {
+  expect(encodeProject("C:/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")).toBe("C--aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-9sl5w8")
+})
+
+test("長路徑編碼：正斜線 300 字元", () => {
+  expect(encodeProject("C:/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")).toBe("C--aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-xnqb4n")
+})
+
+test("長路徑編碼：中文長路徑", () => {
+  expect(encodeProject("G:\\我的雲端硬碟\\專案研究\\專案研究\\專案研究\\專案研究\\專案研究\\專案研究\\專案研究\\專案研究\\專案研究\\專案研究\\專案研究\\專案研究\\專案研究\\專案研究\\專案研究\\專案研究\\專案研究\\專案研究\\專案研究\\專案研究\\專案研究\\專案研究\\專案研究\\專案研究\\專案研究\\專案研究\\專案研究\\專案研究\\專案研究\\專案研究\\專案研究\\專案研究\\專案研究\\專案研究\\專案研究\\專案研究\\專案研究\\專案研究\\專案研究\\專案研究\\成果")).toBe("G--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------1nyl50")
+})
+
+test("長路徑編碼：空格長路徑", () => {
+  expect(encodeProject("D:\\team space\\long folder\\long folder\\long folder\\long folder\\long folder\\long folder\\long folder\\long folder\\long folder\\long folder\\long folder\\long folder\\long folder\\long folder\\long folder\\long folder\\long folder\\long folder\\long folder\\long folder\\long folder\\long folder\\project")).toBe("D--team-space-long-folder-long-folder-long-folder-long-folder-long-folder-long-folder-long-folder-long-folder-long-folder-long-folder-long-folder-long-folder-long-folder-long-folder-long-folder-long-f-qqmxkm")
+})
+
+test("長路徑編碼：POSIX 長路徑", () => {
+  expect(encodeProject("/home/user/project/project/project/project/project/project/project/project/project/project/project/project/project/project/project/project/project/project/project/project/project/project/project/project/project/project/project/project/project/project/project/project/project/project/project/end")).toBe("-home-user-project-project-project-project-project-project-project-project-project-project-project-project-project-project-project-project-project-project-project-project-project-project-project-proje-3bjhre")
+})
+
+test("長路徑編碼：UNC 長路徑", () => {
+  expect(encodeProject("\\\\server\\share\\project\\project\\project\\project\\project\\project\\project\\project\\project\\project\\project\\project\\project\\project\\project\\project\\project\\project\\project\\project\\project\\project\\project\\project\\project\\project\\project\\project\\end")).toBe("--server-share-project-project-project-project-project-project-project-project-project-project-project-project-project-project-project-project-project-project-project-project-project-project-project-p-awa3ht")
+})
+
+test("長路徑編碼：延伸長路徑", () => {
+  expect(encodeProject("\\\\?\\C:\\project\\project\\project\\project\\project\\project\\project\\project\\project\\project\\project\\project\\project\\project\\project\\project\\project\\project\\project\\project\\project\\project\\project\\project\\project\\project\\project\\project\\end")).toBe("----C--project-project-project-project-project-project-project-project-project-project-project-project-project-project-project-project-project-project-project-project-project-project-project-project-p-3zots1")
+})
+
+test("長路徑編碼：emoji 長路徑", () => {
+  expect(encodeProject("C:\\研究😀\\研究😀\\研究😀\\研究😀\\研究😀\\研究😀\\研究😀\\研究😀\\研究😀\\研究😀\\研究😀\\研究😀\\研究😀\\研究😀\\研究😀\\研究😀\\研究😀\\研究😀\\研究😀\\研究😀\\研究😀\\研究😀\\研究😀\\研究😀\\研究😀\\研究😀\\研究😀\\研究😀\\研究😀\\研究😀\\研究😀\\研究😀\\研究😀\\研究😀\\研究😀\\研究😀\\研究😀\\研究😀\\研究😀\\研究😀\\end")).toBe("C--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------shz9sm")
+})
+
+test("長路徑整理寫到 Claude 的專案目錄：原生路徑 201 字元", async ($, on) => {
+  const w = world(on, 100_000, 1_000_000, {}, [], 5)
+  ctl.curRoot = "C:\\aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  await distillNow($)
+  expect(w.files.get(`${CLAUDE_PROJECTS}/C--aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-8x5zet/memory/ctx-handoff.md`)).toContain('使用者決定')
+})
+
+test("長路徑整理寫到 Claude 的專案目錄：正斜線 201 字元", async ($, on) => {
+  const w = world(on, 100_000, 1_000_000, {}, [], 5)
+  ctl.curRoot = "C:/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  await distillNow($)
+  expect(w.files.get(`${CLAUDE_PROJECTS}/C--aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-9sl5w8/memory/ctx-handoff.md`)).toContain('使用者決定')
+})
+
+test('長路徑主工作樹保留 Windows 原生格式雜湊', async ($, on) => {
+  const w = world(on, 100_000, 1_000_000, {}, [], 5)
+  w.files.set('C:/proj/.git', "gitdir: D:/team space/long folder/long folder/long folder/long folder/long folder/long folder/long folder/long folder/long folder/long folder/long folder/long folder/long folder/long folder/long folder/long folder/long folder/long folder/long folder/long folder/long folder/long folder/project/.git/worktrees/feat\r\n")
+  await distillNow($)
+  expect(w.files.get(`${CLAUDE_PROJECTS}/D--team-space-long-folder-long-folder-long-folder-long-folder-long-folder-long-folder-long-folder-long-folder-long-folder-long-folder-long-folder-long-folder-long-folder-long-folder-long-folder-long-f-qqmxkm/memory/ctx-handoff.md`)).toContain('使用者決定')
+})
+
+test('原始路徑 201 字元含尾斜線仍使用長路徑雜湊', () => {
+  expect(encodeProject("C:/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/")).toBe("C--aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-9sl5uu")
+})
