@@ -1,8 +1,8 @@
 // 狀態卡：專案 _HANDOFF.md 裡 ctx-handoff 標記之間的一段。純函式（放進檔案、解析、後備填法）和經由 plugin 的流程（沒有檔案不建立、備份、並行修改不覆蓋、換行與 BOM、觸發時機）
-import { expect, test } from 'claude-code/testing'
+import { expect } from 'claude-code/testing'
 import { applyCard, cardFromHandoff, cardFromProgress, emptyFields, findCard, handoffSections, newCardFile, parseCard, parseCardReply, renderCard, taipeiStamp } from './card'
 import type { CardFields } from './card'
-import { actionsReply, cmd, ctl, distillNow, endTurn, say, startSession, stop, world } from './test-world'
+import { test, actionsReply, cmd, ctl, distillNow, endTurn, say, startSession, stop, world } from './test-world'
 
 const HANDOFF_FILE = 'C:/proj/_HANDOFF.md'
 const BACKUP = 'C:/proj/.ctx-handoff-backup/_HANDOFF.md.bak'

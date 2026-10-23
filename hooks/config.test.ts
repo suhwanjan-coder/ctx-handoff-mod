@@ -1,7 +1,7 @@
 // 介面語言（繁體中文與英文）與使用者設定（/config、pluginConfigs）
-import { expect, test } from 'claude-code/testing'
+import { expect } from 'claude-code/testing'
 import { pickLang } from './i18n'
-import { cmd, resume, say, startSession, endTurn, stop, NOTES, distillNow, pushGuard, openPanel, PANEL_NOTES, ctl, world } from './test-world'
+import { test, cmd, resume, say, startSession, endTurn, stop, NOTES, distillNow, pushGuard, openPanel, PANEL_NOTES, ctl, world } from './test-world'
 
 // ---------- 介面語言：繁體中文與英文 ----------
 const EN = 'English'

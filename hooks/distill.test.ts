@@ -1,7 +1,7 @@
 // 背景整理：套用 JSONL 動作、錨點、帶入新對話、壞行與金鑰過濾、工作區經驗檔
-import { expect, test } from 'claude-code/testing'
+import { expect } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
-import { NOTE_TAG, composer, cmd, say, endTurn, stop, NOTES, distillNow, EXISTING, ALPHA, ALPHA_NOTES, repo, lastOf, actionsReply, ctl, world } from './test-world'
+import { test, NOTE_TAG, composer, cmd, say, endTurn, stop, NOTES, distillNow, EXISTING, ALPHA, ALPHA_NOTES, repo, lastOf, actionsReply, ctl, world } from './test-world'
 
 test('狀態列顯示整理進度：平常是再幾則整理，整理時顯示正在整理，整理完重算', async ($, on) => {
   const w = world(on, 100_000, 1_000_000, {}, [], 5)

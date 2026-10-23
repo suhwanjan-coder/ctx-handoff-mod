@@ -1,7 +1,8 @@
 // 面板：輸入框上方的分頁、守門核准、刪除記憶與規則
-import { expect, test } from 'claude-code/testing'
-import { cmd, ctl, NOTES_PATH, pushGuard, BAND_MOUNT, openPanel, PANEL_NOTES, world } from './test-world'
+import { expect } from 'claude-code/testing'
+import { test, cmd, ctl, NOTES_PATH, pushGuard, BAND_MOUNT, openPanel, PANEL_NOTES, world } from './test-world'
 
+// press 已等待動作與重畫完成，不需再用 clock.advance(0) 重複等待。
 // ---------- 面板 ----------
 
 test('面板：/handoff panel 在輸入框上方開關；問卷佔著時讓出；按關閉也會收起', async ($, on) => {
@@ -39,7 +40,6 @@ test('面板：列出守門與記憶，按核准後守門生效', async ($, on) 
   expect(await ui.find({ type: 'Text', text: /草稿.*#1・擋下.*推送前先跑 preflight/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /4 次工具呼叫中命中 1 次/ })).toBeDefined()
   await ui.press({ key: 'on1' })
-  await w.clock.advance(0)
   expect((w.get('guards:C--proj') as { state: string }[])[0]?.state).toBe('on')
   expect(await ui.find({ type: 'Text', text: /守門 #1 已核准/ })).toBeDefined()
   const blocked = await $.tool.call({ tool: 'Bash', command: 'git push' })
@@ -54,11 +54,9 @@ test('面板：刪除記憶要按兩次，寫檔前備份原檔', async ($, on) 
   const ui = await openPanel($, 'memory')
   const key = 'm:[feedback] 使用者要求每次都先跑測試'
   await ui.press({ key: `del:${key}` })
-  await w.clock.advance(0)
   // 第一次只標記，不寫檔
   expect(w.files.get(NOTES_PATH)).toBe(PANEL_NOTES)
   await ui.press({ key: `yes:${key}` })
-  await w.clock.advance(0)
   const after = w.files.get(NOTES_PATH) ?? ''
   expect(after).not.toContain('使用者要求每次都先跑測試')
   expect(after).toContain('舊的記憶')
@@ -113,16 +111,13 @@ test('面板設定：數字按＋加一格、開關按切換，存進 store 的 
   expect(await ui.find({ type: 'Text', text: /交接門檻 200k settings\.json/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /回覆語言提醒 auto → zh-TW 預設/ })).toBeDefined()
   await ui.press({ key: 'inc:threshold' })
-  await w.clock.advance(0)
   expect(w.get('settings')).toEqual({ threshold: 250_000 })
   expect((await cmd($, '')).text).toContain('門檻 250000')
   expect(await ui.find({ type: 'Text', text: /交接門檻 250k 面板/ })).toBeDefined()
   await ui.press({ key: 'set:retry_nudge' })
-  await w.clock.advance(0)
   expect(w.get('settings')).toEqual({ threshold: 250_000, retry_nudge: false })
   expect((await cmd($, '')).text).toContain('重複失敗 off')
   await ui.press({ key: 'reset:threshold' })
-  await w.clock.advance(0)
   expect(w.get('settings')).toEqual({ retry_nudge: false })
   expect((await cmd($, '')).text).toContain('門檻 200000')
 })
@@ -134,13 +129,10 @@ test('面板設定：數字不超出範圍，選項依序輪；保持快取與�
   const ui = await openPanel($)
   await ui.press({ key: 'tab:settings' })
   await ui.press({ key: 'inc:idle_minutes' })
-  await w.clock.advance(0)
   expect((w.get('settings') as Record<string, unknown>).idle_minutes).toBe(59)
   await ui.press({ key: 'set:reply_language' })
-  await w.clock.advance(0)
   expect((w.get('settings') as Record<string, unknown>).reply_language).toBe('auto')
   await ui.press({ key: 'set:refresh' })
-  await w.clock.advance(0)
   expect(w.get('refresh')).toBe(false)
   expect((await cmd($, 'refresh')).text).toContain('off')
 })

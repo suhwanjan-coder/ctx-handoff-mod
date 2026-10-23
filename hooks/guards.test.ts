@@ -1,6 +1,6 @@
 // 守門：deny／remind 規則、草稿與核准、tool.call 攔截
-import { expect, test } from 'claude-code/testing'
-import { cmd, NOTES_PATH, pushGuard, actionsReply, ctl, world } from './test-world'
+import { expect } from 'claude-code/testing'
+import { test, cmd, NOTES_PATH, pushGuard, actionsReply, ctl, world } from './test-world'
 
 // ---------- 守門 ----------
 

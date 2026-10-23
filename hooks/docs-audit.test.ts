@@ -1,7 +1,7 @@
 // 文件審查的行為證據：使用既有模擬世界，不改產品實作。
-import { expect, test } from 'claude-code/testing'
+import { expect } from 'claude-code/testing'
 import { pickLang, setLang, t } from './i18n'
-import { cmd, ctl, distillNow, endTurn, startSession, world } from './test-world'
+import { test, cmd, ctl, distillNow, endTurn, startSession, world } from './test-world'
 import { SETTINGS, resolveConfig, thresholdOf, resetConfig } from './config'
 import { guardHits } from './guards'
 

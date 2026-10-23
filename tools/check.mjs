@@ -6,6 +6,7 @@ import { spawnSync, execFileSync } from 'node:child_process'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { dirname, resolve, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { parseTestCounts } from './lib.mjs'
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const dir = resolve(process.argv.slice(2).find(a => !a.startsWith('--')) ?? repo)
@@ -46,7 +47,8 @@ const report = (name, ok, summary, out = '') => {
   const tests = readdirSync(join(dir, 'tools')).filter(f => f.endsWith('.test.mjs')).map(f => join('tools', f))
   const r = spawnSync(process.execPath, ['--test', ...tests], { cwd: dir, encoding: 'utf8' })
   const out = `${r.stdout ?? ''}${r.stderr ?? ''}`
-  report('tools', r.status === 0, `${/# pass (\d+)/.exec(out)?.[1] ?? '?'} pass／${/# fail (\d+)/.exec(out)?.[1] ?? '?'} fail`, out)
+  const { pass, fail } = parseTestCounts(out)
+  report('tools', r.status === 0, `${pass} pass／${fail} fail`, out)
 }
 if (process.argv.includes('--skip-tsc')) console.log('SKIP tsc')
 else if (!existsSync(join(dir, '.claude-plugin', 'types'))) {

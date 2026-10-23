@@ -1,8 +1,8 @@
 // 中文、BOM、CRLF 與字數上限的既有行為。
-import { expect, test } from 'claude-code/testing'
+import { expect } from 'claude-code/testing'
 import { parseNotes, renderNotes } from './notes'
 import { digestOfRows, parseTail } from './digest'
-import { actionsReply, ctl, distillNow, NOTES, world } from './test-world'
+import { test, actionsReply, ctl, distillNow, NOTES, world } from './test-world'
 
 for (const bom of ['', '\ufeff']) for (const nl of ['\n', '\r\n']) test(`經驗檔解析中文並統一成 LF：BOM=${!!bom} CRLF=${nl.length === 2}`, () => {
   const raw = bom + ['# ctx-handoff 專案經驗', '', '## 記憶', '- [project] 中文😀，全形。', '', '## 規則', ''].join(nl)

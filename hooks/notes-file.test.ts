@@ -1,7 +1,7 @@
 // 經驗檔：手動編輯不被吃掉、POSIX 路徑、記憶的格式（標題、根據、原話）
-import { expect, test } from 'claude-code/testing'
+import { expect } from 'claude-code/testing'
 import type { On } from 'claude-code'
-import { cmd, say, NOTES, distillNow, EXISTING, CLAUDE_PROJECTS, lastOf, openPanel, actionsReply, ctl, world } from './test-world'
+import { test, cmd, say, NOTES, distillNow, EXISTING, CLAUDE_PROJECTS, lastOf, openPanel, actionsReply, ctl, world } from './test-world'
 
 // ---------- S7：經驗檔手動編輯不被吃掉 ----------
 
@@ -430,7 +430,6 @@ test('面板：封存的記憶另列一區，按留下就加一筆今天的根�
   const ui = await openPanel($, 'memory')
   expect(await ui.find({ type: 'Text', text: /封存 1 條：超過 30 天沒被證實/ })).toBeDefined()
   await ui.press({ key: 'keep:[reference] 很久沒證實的位置' })
-  await w.clock.advance(0)
   expect(w.files.get(NOTES) ?? '').toContain('  - 根據：1970-01-01｜在面板確認留下')
   expect(await ui.find({ type: 'Text', text: /^封存 \d+ 條/ })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: /已留下：很久沒證實的位置/ })).toBeDefined()

@@ -1,7 +1,7 @@
 // session 摘要（四行，從對話檔尾端算、依修改時間與大小快取）與快取 TTL（5 分鐘的 session 不做保持快取刷新）
-import { expect, test } from 'claude-code/testing'
+import { expect } from 'claude-code/testing'
 import { DIGEST_LABELS_ZH, digestLines, digestOf, digestOfRows, parseTail, ttlOf } from './digest'
-import { cmd, ctl, endTurn, world } from './test-world'
+import { test, cmd, ctl, endTurn, world } from './test-world'
 
 const TRANSCRIPT = 'C:/Users/u/.claude/projects/C--proj/S1.jsonl'
 const j = (o: object) => JSON.stringify(o)

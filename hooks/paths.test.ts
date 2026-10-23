@@ -1,7 +1,7 @@
 // Windows 路徑邊界：slug、根目錄、點路徑與 worktree。
-import { expect, test } from 'claude-code/testing'
+import { expect } from 'claude-code/testing'
 import { encodeProject, isAbs, resolveDots, slash } from './paths'
-import { CLAUDE_PROJECTS, ctl, distillNow, world } from './test-world'
+import { test, CLAUDE_PROJECTS, ctl, distillNow, world } from './test-world'
 
 for (const [path, slug] of [
   ['C:\\Users\\u\\dev\\claude-mods', 'C--Users-u-dev-claude-mods'],

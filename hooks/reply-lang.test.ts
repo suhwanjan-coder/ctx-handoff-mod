@@ -1,6 +1,6 @@
 // 回覆語言提醒（經由 turn.step、tool.call、prompt.submit、/handoff 狀態）
-import { expect, test } from 'claude-code/testing'
-import { NOTE_TAG, cmd, ctl, distillNow, say, step, world } from './test-world'
+import { expect } from 'claude-code/testing'
+import { test, NOTE_TAG, cmd, ctl, distillNow, say, step, world } from './test-world'
 
 const TW = '我把這個 hook 改成在每一步之後檢查說明的語言，如果不是繁體中文，就在下一個工具結果後面附一段提醒。這樣主對話可以及早收到通知，而且每一段只會提醒一次，測試也都補好了。'
 const EN = 'I changed the hook so that it checks the language of the explanation after every step. If it is not the configured language, a reminder is attached to the next tool result, once per streak, and tests are added.'

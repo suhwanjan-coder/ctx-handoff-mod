@@ -1,7 +1,7 @@
 // 交接主流程：門檻、閒置刷新、離席 handoff、交接期間訊息不遺失、背景工作與排程、store 鍵分專案
-import { expect, test } from 'claude-code/testing'
+import { expect } from 'claude-code/testing'
 import type { On } from 'claude-code'
-import { NOTE_TAG, DAY, presentation, composer, cmd, resume, say, startSession, task, cron, endTurn, stop, NOTES, distillNow, ctl, world } from './test-world'
+import { test, NOTE_TAG, DAY, presentation, composer, cmd, resume, say, startSession, task, cron, endTurn, stop, NOTES, distillNow, ctl, world } from './test-world'
 
 test('達 600k：產生 handoff → /clear → 送出', async ($, on) => {
   const w = world(on, 650_000)

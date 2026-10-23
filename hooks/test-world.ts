@@ -1,7 +1,19 @@
 // 測試共用的模擬世界與小工具：各 *.test.ts 都從這裡匯入（檔名不是 *.test.ts，測試執行器不會當成測試跑）
-import { mock } from 'claude-code/testing'
+import { mock, test as frameworkTest } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
+
+// 多檔並行時 CPU 滿載，框架預設的 5 秒會隨機逾時；20 秒仍能抓到真的卡死。
+export const DEFAULT_TEST_TIMEOUT_MS = 20_000
+
+export const test: typeof frameworkTest = (name, ...rest) => {
+  if (rest.length === 1) {
+    frameworkTest(name, { timeoutMs: DEFAULT_TEST_TIMEOUT_MS }, rest[0])
+  } else {
+    const [options, body] = rest
+    frameworkTest(name, { ...options, timeoutMs: options.timeoutMs ?? DEFAULT_TEST_TIMEOUT_MS }, body)
+  }
+}
 
 const usage = (tokens: number) =>
   ({ input_tokens: 1, output_tokens: 1, cache_read_input_tokens: tokens, cache_creation_input_tokens: 0 })

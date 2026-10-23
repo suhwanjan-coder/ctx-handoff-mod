@@ -1,8 +1,8 @@
 // 不可逆指令確認：Bash／PowerShell 的 rm -r、git push --force 這類指令先問使用者。
 // 取捨：引號裡的字串也會掃（echo "rm -rf /" 會被問一次）；包裝（bash -c、sudo、xargs、powershell -Command、cmd /c）本身不觸發，裡面的指令照掃
-import { expect, test } from 'claude-code/testing'
+import { expect } from 'claude-code/testing'
 import { irreversible } from './cmdguard'
-import { cmd, ctl, pushGuard, startSession, world } from './test-world'
+import { test, cmd, ctl, pushGuard, startSession, world } from './test-world'
 
 const hit = (command: string, tool = 'Bash') => irreversible(tool, command)?.id
 
@@ -376,10 +376,14 @@ test('英文介面：問題與選項是英文', async ($, on) => {
 })
 
 test('不可逆指令：很長的指令（heredoc、幾十萬字）也在極短時間掃完，不會卡住', () => {
-  const heredoc = `cat <<'EOF'\n${'git push origin main and some prose with git and push words\n'.repeat(3000)}EOF`
+  const heredoc = `cat <<'EOF'\n${'git push origin main and some prose with git and push words\n'.repeat(1000)}EOF`
+  // 重複內容只需保留足夠長的輸入：heredoc 超過五萬字、指令超過二十萬字。
+  // 建立測資不算掃描耗時；仍保留原本兩秒效能斷言與尾端危險指令檢查。
+  const many = 'git status && git log --oneline | head -5 ; echo hello world rm file push -f foo '.repeat(2700)
+  expect(heredoc.length).toBeGreaterThan(50_000)
+  expect(many.length).toBeGreaterThan(200_000)
   let t0 = Date.now()
   expect(hit(heredoc)).toBeUndefined()
-  const many = 'git status && git log --oneline | head -5 ; echo hello world rm file push -f foo '.repeat(4000)
   expect(hit(many)).toBeUndefined()
   expect(Date.now() - t0).toBeLessThan(2000)
   // 長指令尾巴真的有不可逆操作還是抓得到

@@ -1,5 +1,6 @@
 // 截短點不能拆開 UTF-16 代理對，送進模型或 UTF-8 檔案時才不會變成替代字元。
-import { expect, test } from 'claude-code/testing'
+import { expect } from 'claude-code/testing'
+import { test } from './test-world'
 import { anchorOf, clip, transcriptOf } from './transcript'
 
 const intact = (s: string) => expect(new TextDecoder().decode(new TextEncoder().encode(s)) === s).toBe(true)

@@ -1,5 +1,6 @@
 // 回覆語言判斷（純函式）：夾英文術語的中文不能誤判，幾乎全英文或簡體的要抓到
-import { expect, test } from 'claude-code/testing'
+import { expect } from 'claude-code/testing'
+import { test } from './test-world'
 import { PAIRS, SIMPLIFIED_ONLY, TRADITIONAL_ONLY, clearNext, countOf, freshReply, isReplyLangSetting, judge, noteStep, peekNext, proseOf, replyLangOfSetting, reminderText, resolveReplyLang, takePending } from './lang'
 
 // 繁體中文、夾少量英文術語

@@ -1,11 +1,11 @@
 // 進度備忘：整理順手產生 set_progress、依工作區存在 $.store、下一段對話開頭提供一次
-import { expect, test } from 'claude-code/testing'
+import { expect } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import { latestProgress, parseActions } from './distill'
 import { parseNotes } from './notes'
 import { agoText, progressOffer } from './progress'
 import type { Progress } from './progress'
-import { DAY, NOTE_TAG, NOTES, actionsReply, cmd, ctl, distillNow, say, stop, world } from './test-world'
+import { test, DAY, NOTE_TAG, NOTES, actionsReply, cmd, ctl, distillNow, say, stop, world } from './test-world'
 
 const HOUR = 60 * 60_000
 const PROGRESS = {

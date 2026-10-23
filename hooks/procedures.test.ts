@@ -1,6 +1,6 @@
 // 流程：背景整理學到的多步驟固定做法。存進經驗檔的「## 流程」、不帶入新對話（不會寫進任何專案檔案）
-import { expect, test } from 'claude-code/testing'
-import { actionsReply, cmd, ctl, distillNow, lastOf, NOTES, NOTES_PATH, openPanel, world } from './test-world'
+import { expect } from 'claude-code/testing'
+import { test, actionsReply, cmd, ctl, distillNow, lastOf, NOTES, NOTES_PATH, openPanel, world } from './test-world'
 import { parseNotes, renderNotes } from './notes'
 
 const RELEASE = {
@@ -166,10 +166,8 @@ test('流程：面板在規則分頁列出次數，刪除要按兩次並備份�
   expect(await ui.find({ type: 'Text', text: /流程 1 條/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /3 次 發版/ })).toBeDefined()
   await ui.press({ key: 'del:p:發版' })
-  await w.clock.advance(0)
   expect(w.files.get(NOTES_PATH)).toBe(text)
   await ui.press({ key: 'yes:p:發版' })
-  await w.clock.advance(0)
   const after = w.files.get(NOTES_PATH) ?? ''
   expect(after).not.toContain('發版')
   expect(after).not.toContain('## 流程')

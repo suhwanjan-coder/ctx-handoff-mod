@@ -1,9 +1,9 @@
 // 獨立審查（0.6.0）找到的缺陷的固定測試。每個測試名稱開頭的 review-N 是審查的第 N 項
-import { expect, test } from 'claude-code/testing'
+import { expect } from 'claude-code/testing'
 import { CARD_CLOSE, applyCard, cardFromHandoff, emptyFields, findCard, parseCard, parseCardReply, renderCard } from './card'
 import type { CardFields } from './card'
 import { digestOf, digestOfRows, parseTail } from './digest'
-import { cmd, ctl, say, world } from './test-world'
+import { test, cmd, ctl, say, world } from './test-world'
 
 const HANDOFF_FILE = 'C:/proj/_HANDOFF.md'
 const BACKUP_DIR = 'C:/proj/.ctx-handoff-backup'

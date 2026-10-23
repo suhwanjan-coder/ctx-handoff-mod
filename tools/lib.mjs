@@ -7,6 +7,14 @@ export const claudeDir = () => (process.env.CLAUDE_CONFIG_DIR || join(homedir(),
 
 export const NOTES_NAME = 'ctx-handoff.md'
 
+// Node 的 TAP 與 spec 摘要使用不同前綴；各欄位都找不到時才顯示問號。
+export function parseTestCounts(output) {
+  return {
+    pass: /^(?:#|ℹ) pass (\d+)\s*$/m.exec(output)?.[1] ?? '?',
+    fail: /^(?:#|ℹ) fail (\d+)\s*$/m.exec(output)?.[1] ?? '?',
+  }
+}
+
 export function parseNotes(text) {
   const notes = { memory: [], rules: [], procedures: [], extra: [] }
   let section, rule, inItem = false

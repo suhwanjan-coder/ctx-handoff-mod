@@ -1,6 +1,6 @@
 // 交接的失敗與時間：失敗可見可重送、重試間隔、fork 卡住與逾時、搬移、專案鍵
-import { expect, test } from 'claude-code/testing'
-import { composer, cmd, say, stop, NOTES, distillNow, EXISTING, CLAUDE_PROJECTS, ALPHA, ALPHA_NOTES, repo, lastOf, actionsReply, ctl, world } from './test-world'
+import { expect } from 'claude-code/testing'
+import { test, composer, cmd, say, stop, NOTES, distillNow, EXISTING, CLAUDE_PROJECTS, ALPHA, ALPHA_NOTES, repo, lastOf, actionsReply, ctl, world } from './test-world'
 
 // ---------- S6：失敗可見、可重送、重試有間隔 ----------
 

@@ -1,8 +1,8 @@
 // 防呆提醒：同樣的失敗連續兩次、說完成了卻沒驗證
-import { expect, test } from 'claude-code/testing'
+import { expect } from 'claude-code/testing'
 import { claimsDone, doneCheck, failureSignature, freshWork, isCheckCommand, noteCall, trackFailure } from './loops'
 import type { Streak, Work } from './loops'
-import { cmd, ctl, say, stop, world } from './test-world'
+import { test, cmd, ctl, say, stop, world } from './test-world'
 
 const fail = (text: string) => ({ isError: true as const, result: text, text })
 const NUDGE = '連續兩次因同樣原因失敗'

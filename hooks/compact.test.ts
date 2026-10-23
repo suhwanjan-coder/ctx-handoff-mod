@@ -1,6 +1,6 @@
 // 壓縮（session.compact）：記前後 token 數、toast、重設閒置計時，壓縮後還讀到舊數字時不拿它判斷交接
-import { expect, test } from 'claude-code/testing'
-import { ctl, endTurn, stop, world } from './test-world'
+import { expect } from 'claude-code/testing'
+import { test, ctl, endTurn, stop, world } from './test-world'
 
 // 壓縮留下的訊息（至少一則）
 const KEPT = [{ role: 'user' as const, text: '摘要', toolUses: [] }]

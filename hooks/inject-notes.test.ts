@@ -1,7 +1,7 @@
 // 0.6.0 的精簡：經驗檔的內容預設不帶進對話（inject_notes 關），「放進專案」整個拿掉（plugin.json 的 userConfig 和設定一致由 tools/manifest.test.mjs 檢查）
-import { expect, test } from 'claude-code/testing'
+import { expect } from 'claude-code/testing'
 import { resolveConfig } from './config'
-import { actionsReply, BAND_MOUNT, cmd, ctl, distillNow, EXISTING, NOTES, openPanel, pushGuard, say, startSession, stop, world } from './test-world'
+import { test, actionsReply, BAND_MOUNT, cmd, ctl, distillNow, EXISTING, NOTES, openPanel, pushGuard, say, startSession, stop, world } from './test-world'
 
 const RULES_5 = [
   '# ctx-handoff 專案經驗', '', '## 記憶', '- [feedback] 使用者要求每次都先跑測試', '', '## 規則', '',
@@ -68,7 +68,6 @@ test('面板設定：經驗帶入新對話預設關，按切換後馬上生效',
   expect(await ui.find({ type: 'Text', text: /狀態卡用的模型 同整理用 預設/ })).toBeDefined()
   expect(await blocks($)).toEqual([])
   await ui.press({ key: 'set:inject_notes' })
-  await w.clock.advance(0)
   expect(w.get('settings')).toEqual({ inject_notes: true })
   expect((await blocks($)).map(b => b.name)).toEqual(['ctxHandoffProject'])
 })

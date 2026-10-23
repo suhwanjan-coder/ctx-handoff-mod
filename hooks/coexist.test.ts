@@ -1,6 +1,6 @@
 // 和其他 mod 並存：另一個 mod（例如 progress）也畫輸入框上方（AbovePrompt）。面板沒開時 ctx-handoff 必須 next(e)，把畫面讓給下層
-import { expect, test } from 'claude-code/testing'
-import { BAND_MOUNT, cmd, NOTES_PATH, PANEL_NOTES, world } from './test-world'
+import { expect } from 'claude-code/testing'
+import { test, BAND_MOUNT, cmd, NOTES_PATH, PANEL_NOTES, world } from './test-world'
 
 test('AbovePrompt：面板關著時交給下層（不畫任何東西、不吞掉別的 mod 的畫面）', async ($, on) => {
   const w = world(on, 1000)

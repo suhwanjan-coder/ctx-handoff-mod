@@ -1,5 +1,6 @@
 // 獨立審查（0.6.0）第 8、9 項：不可逆指令偵測的漏報與誤報
-import { expect, test } from 'claude-code/testing'
+import { expect } from 'claude-code/testing'
+import { test } from './test-world'
 import { irreversible } from './cmdguard'
 
 const hit = (command: string, tool = 'Bash') => irreversible(tool, command)?.id
