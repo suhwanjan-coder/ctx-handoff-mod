@@ -6,16 +6,17 @@ All notable changes to ctx-handoff. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
-### Fixed
-
-- The irreversible-command check now catches nested quoted paths, `find -delete`, and flags next to command separators. Preview flags only exempt their own command; quoted `-WhatIf` paths and flags outside a subexpression no longer hide destructive commands. `cargo rm`, `git -C repo rm`, and simple PowerShell deletion or disk-format previews no longer ask unnecessarily. Long strings of adjacent quotes no longer repeatedly rescan the same prefix.
-
 ### Added
 
 - Short commands for coming back after being away: `/hc` is `/handoff continue` and `/hr` is `/handoff resume`; `/handoff c` and `/handoff r` work too. If another command already uses `/hc` or `/hr`, that short name is skipped and the long form still works.
 
+### Changed
+
+- **Clearer operating limits:** the guide now distinguishes manual notes updates from automatic limits, explains guard matching, status output, setting ranges and card-write limits, and corrects the handoff and request-cost descriptions.
+
 ### Fixed
 
+- The irreversible-command check now catches nested quoted paths, `find -delete`, and flags next to command separators. Preview flags only exempt their own command; quoted `-WhatIf` paths and flags outside a subexpression no longer hide destructive commands. `cargo rm`, `git -C repo rm`, and simple PowerShell deletion or disk-format previews no longer ask unnecessarily. Long strings of adjacent quotes no longer repeatedly rescan the same prefix.
 - **Windows paths and Unicode:** notes now use the correct folder when starting at a drive root or resolving worktree paths with dot segments or repeated separators; shortened conversation text keeps emoji intact.
 
 ## [0.6.0] - 2026-10-09
